@@ -4,11 +4,11 @@ NETWORK ?= testnet
 ASSET_CODE ?= ACEUSD
 ISSUER_ACCOUNT ?= alice
 DIST_ACCOUNT ?= alice2
-ISSUER_SECRET ?= 
-DIST_SECRET ?= SABHNOHCOVS27LOVPIB63OZFGGPT6ONNS67YU5HH3ZN4EXPIRVOSSTHC
-SOURCE_SECRET ?= 
+ISSUER_SECRET ?= S_ISSUER_SECRET_HERE
+DIST_SECRET ?= S_DISTRIBUTOR_SECRET_HERE
+SOURCE_SECRET ?= S_SOURCE_SECRET_HERE
 NEW_USER_ACCOUNT ?= GBCX4IVFVGSRUTN6YSVP2QLWD6WAZ5FL4GB4MUNS5GHQZGOFNUAJB5MA
-NEW_USER_SECRET ?= 
+NEW_USER_SECRET ?= S_NEW_USER_SECRET_HERE
 ISSUE_AMOUNT ?= 1000
 SEND_AMOUNT ?= 100
 REQUIRE_AUTH ?= true
@@ -16,8 +16,11 @@ REVOCABLE_AUTH ?= true
 SAC_ID ?= CD242MLPC2MNFU2RILWMIMBPW66RVGE7J3O7AOG7QWZUVSDABV2QBC3X
 KYC_CONTRACT_ID ?= CA4BWZDQKXRO3PPETJO5GKA2TON2HDPKOTBPLLBPUMSM2WNSEUWYXVLW
 ADMIN_ACCOUNT ?= G_ADMIN_ACCOUNT_HERE
+TRANSFER_FROM ?= alice
+TRANSFER_TO ?= alice2
+TRANSFER_AMOUNT ?= 100
 
-.PHONY: help print-env classic-asset onboard-user register-sac soroban-build soroban-test
+.PHONY: help print-env classic-asset onboard-user register-sac soroban-build soroban-test contract-deploy contract-invoke contract-transfer
 
 help:
 	@echo "Targets:"
@@ -38,10 +41,10 @@ print-env:
 	@echo "SEND_AMOUNT=$(SEND_AMOUNT)"
 	@echo "REQUIRE_AUTH=$(REQUIRE_AUTH)"
 	@echo "REVOCABLE_AUTH=$(REVOCABLE_AUTH)"
-	@echo "SOURCE_SECRET=$$( [[ '$(SOURCE_SECRET)' == S_SOURCE_SECRET_HERE ]] && echo '<placeholder>' || echo '<set>' )"
-	@echo "ISSUER_SECRET=$$( [[ '$(ISSUER_SECRET)' == S_ISSUER_SECRET_HERE ]] && echo '<placeholder>' || echo '<set>' )"
-	@echo "DIST_SECRET=$$( [[ '$(DIST_SECRET)' == S_DISTRIBUTOR_SECRET_HERE ]] && echo '<placeholder>' || echo '<set>' )"
-	@echo "NEW_USER_SECRET=$$( [[ '$(NEW_USER_SECRET)' == S_NEW_USER_SECRET_HERE ]] && echo '<placeholder>' || echo '<set>' )"
+	@echo "SOURCE_SECRET=$$( case '$(SOURCE_SECRET)' in ''|S_*_HERE) echo '<unset/placeholder>' ;; *) echo '<set>' ;; esac )"
+	@echo "ISSUER_SECRET=$$( case '$(ISSUER_SECRET)' in ''|S_*_HERE) echo '<unset/placeholder>' ;; *) echo '<set>' ;; esac )"
+	@echo "DIST_SECRET=$$( case '$(DIST_SECRET)' in ''|S_*_HERE) echo '<unset/placeholder>' ;; *) echo '<set>' ;; esac )"
+	@echo "NEW_USER_SECRET=$$( case '$(NEW_USER_SECRET)' in ''|S_*_HERE) echo '<unset/placeholder>' ;; *) echo '<set>' ;; esac )"
 
 classic-asset:
 	@NETWORK="$(NETWORK)" \
@@ -90,7 +93,7 @@ soroban-test:
 contract-deploy:
 	stellar contract deploy \
   		--wasm soroban/kyc_asset/target/wasm32v1-none/release/kyc_asset.wasm \
-  		--source-account SC7FWTEOHJ6XDD7HYFGB4KURHRRRE4BPVIMUSCBDC3H22PG45KJXMSV4 \
+  		--source-account $(SOURCE_SECRET) \
   		--network $(NETWORK)
 
 contract-invoke:
@@ -99,7 +102,7 @@ contract-invoke:
   		--source-account $(SOURCE_SECRET) \
   		--network $(NETWORK) \
   		-- init \
-  		--admin alice \
+  		--admin $(ADMIN_ACCOUNT) \
   		--sac $(SAC_ID)
 
 contract-transfer:
@@ -108,7 +111,6 @@ contract-transfer:
   		--source-account $(SOURCE_SECRET) \
   		--network $(NETWORK) \
   		-- transfer \
-  		--from alice \
-  		--to alice2 \
-  		--amount 100
-
+  		--from $(TRANSFER_FROM) \
+  		--to $(TRANSFER_TO) \
+  		--amount $(TRANSFER_AMOUNT)

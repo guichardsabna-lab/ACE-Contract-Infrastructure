@@ -18,11 +18,17 @@ REQUIRE_AUTH="${REQUIRE_AUTH:-true}"
 REVOCABLE_AUTH="${REVOCABLE_AUTH:-true}"
 ISSUE_AMOUNT="${ISSUE_AMOUNT:-1000}"
 
-for v in NETWORK ASSET_CODE ISSUER_ACCOUNT DIST_ACCOUNT DIST_SECRET ISSUER_SECRET; do
-  if [[ -z "${!v:-}" ]]; then
-    echo "Missing env var: $v"
+require_env() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ -z "$value" || "$value" == *_HERE ]]; then
+    echo "Missing env var: $name"
     exit 1
   fi
+}
+
+for v in NETWORK ASSET_CODE ISSUER_ACCOUNT DIST_ACCOUNT DIST_SECRET ISSUER_SECRET; do
+  require_env "$v"
 done
 
 if ! command -v stellar >/dev/null 2>&1; then

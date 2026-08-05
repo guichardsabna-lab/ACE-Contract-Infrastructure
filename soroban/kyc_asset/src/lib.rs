@@ -73,7 +73,11 @@ impl KycAssetController {
     pub fn version(env: Env) -> Vec<Symbol> {
         Vec::from_array(
             &env,
-            [Symbol::new(&env, "kyc"), Symbol::new(&env, "asset"), Symbol::new(&env, "v2")],
+            [
+                Symbol::new(&env, "kyc"),
+                Symbol::new(&env, "asset"),
+                Symbol::new(&env, "v2"),
+            ],
         )
     }
 }

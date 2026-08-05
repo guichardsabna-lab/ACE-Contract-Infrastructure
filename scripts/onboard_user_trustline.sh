@@ -17,11 +17,17 @@ set -euo pipefail
 REQUIRE_AUTH="${REQUIRE_AUTH:-true}"
 SEND_AMOUNT="${SEND_AMOUNT:-0}"
 
-for v in NETWORK ASSET_CODE ISSUER_ACCOUNT ISSUER_SECRET DIST_SECRET NEW_USER_ACCOUNT NEW_USER_SECRET; do
-  if [[ -z "${!v:-}" ]]; then
-    echo "Missing env var: $v"
+require_env() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ -z "$value" || "$value" == *_HERE ]]; then
+    echo "Missing env var: $name"
     exit 1
   fi
+}
+
+for v in NETWORK ASSET_CODE ISSUER_ACCOUNT ISSUER_SECRET DIST_SECRET NEW_USER_ACCOUNT NEW_USER_SECRET; do
+  require_env "$v"
 done
 
 if ! command -v stellar >/dev/null 2>&1; then

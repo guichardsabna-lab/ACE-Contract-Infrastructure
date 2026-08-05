@@ -1,23 +1,45 @@
-# KYC Asset Controller (Soroban)
+# KYC Asset Controller
 
-This folder contains starter Soroban code for controlling workflows around a
-SAC (Stellar Asset Contract) that wraps your classic asset.
+Soroban contract that wraps common operations around a Stellar Asset Contract (SAC). It is designed as a starting point for adding compliance checks to an ACE classic asset.
 
-## What this starter does
+## Current behavior
 
-- Stores `admin` address and `sac` address via `init`
-- Exposes `get_sac()` accessor
-- Includes placeholder `is_kyc_allowed(user)` logic
+- `init(admin, sac)` initializes the controller once and stores the admin and SAC addresses.
+- `get_admin()` returns the configured admin address.
+- `get_sac()` returns the configured SAC address.
+- `set_sac(sac)` lets the admin rotate the SAC address.
+- `balance(user)` reads a user's SAC token balance.
+- `allowance(from, spender)` reads token allowance from the SAC.
+- `transfer(from, to, amount)` requires `from` authorization and forwards the transfer to the SAC.
+- `is_kyc_allowed(user)` is a placeholder that currently returns `true`.
+- `version()` returns a small symbolic contract version marker.
 
 ## Build
 
-From `Contracts/`:
+From the repository root:
 
 ```bash
 make soroban-build
 ```
 
-## Next step (recommended)
+Or from this directory:
 
-Implement explicit methods that check KYC status before invoking SAC transfers.
-For production, wire this to your compliance source of truth and add tests.
+```bash
+cargo build --target wasm32v1-none --release
+```
+
+## Test
+
+```bash
+make soroban-test
+```
+
+## Production TODOs
+
+Before using this controller with real assets:
+
+1. Replace `is_kyc_allowed` with a real allowlist, denylist, or external compliance integration.
+2. Enforce KYC checks inside mutating token actions such as `transfer`.
+3. Add tests for initialization, admin-only SAC rotation, happy-path transfers, and rejected users.
+4. Define upgrade and incident-response procedures for admin key rotation.
+5. Review every caller-facing method for expected authentication behavior.

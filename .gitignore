@@ -16,8 +16,5 @@ target/
 **/target/
 *.wasm
 
-# Cargo local lockfile (keep if this is an app, ignore for libs)
-Cargo.lock
-
 # Logs
 *.log
