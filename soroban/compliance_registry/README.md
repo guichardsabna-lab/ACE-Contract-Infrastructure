@@ -1,4 +1,4 @@
-# KYC Asset Controller
+# Compliance Registry
 
 Soroban contract that wraps common operations around a Stellar Asset Contract (SAC). It is designed as a starting point for adding compliance checks to an ACE classic asset.
 
@@ -11,7 +11,7 @@ Soroban contract that wraps common operations around a Stellar Asset Contract (S
 - `balance(user)` reads a user's SAC token balance.
 - `allowance(from, spender)` reads token allowance from the SAC.
 - `transfer(from, to, amount)` requires `from` authorization and forwards the transfer to the SAC.
-- `is_kyc_allowed(user)` is a placeholder that currently returns `true`.
+- `is_compliance_allowed(user)` is a placeholder that currently returns `true`.
 - `version()` returns a small symbolic contract version marker.
 
 ## Build
@@ -38,8 +38,8 @@ make soroban-test
 
 Before using this controller with real assets:
 
-1. Replace `is_kyc_allowed` with a real allowlist, denylist, or external compliance integration.
-2. Enforce KYC checks inside mutating token actions such as `transfer`.
+1. Replace `is_compliance_allowed` with a real allowlist, denylist, or external compliance integration.
+2. Enforce compliance checks inside mutating token actions such as `transfer`.
 3. Add tests for initialization, admin-only SAC rotation, happy-path transfers, and rejected users.
 4. Define upgrade and incident-response procedures for admin key rotation.
 5. Review every caller-facing method for expected authentication behavior.

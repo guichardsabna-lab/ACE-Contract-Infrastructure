@@ -13,8 +13,9 @@ ISSUE_AMOUNT ?= 1000
 SEND_AMOUNT ?= 100
 REQUIRE_AUTH ?= true
 REVOCABLE_AUTH ?= true
+CLAWBACK_ENABLED ?= false
 SAC_ID ?= CD242MLPC2MNFU2RILWMIMBPW66RVGE7J3O7AOG7QWZUVSDABV2QBC3X
-KYC_CONTRACT_ID ?= CA4BWZDQKXRO3PPETJO5GKA2TON2HDPKOTBPLLBPUMSM2WNSEUWYXVLW
+COMPLIANCE_CONTRACT_ID ?= CA4BWZDQKXRO3PPETJO5GKA2TON2HDPKOTBPLLBPUMSM2WNSEUWYXVLW
 ADMIN_ACCOUNT ?= G_ADMIN_ACCOUNT_HERE
 TRANSFER_FROM ?= alice
 TRANSFER_TO ?= alice2
@@ -28,7 +29,7 @@ help:
 	@echo "  make classic-asset  # create/configure classic asset + trustline/auth flow"
 	@echo "  make onboard-user   # new user trustline + optional auth + optional send"
 	@echo "  make register-sac   # register/get SAC for ASSET_CODE:ISSUER_ACCOUNT"
-	@echo "  make soroban-build  # build soroban contract in soroban/kyc_asset"
+	@echo "  make soroban-build  # build soroban contract in soroban/compliance_registry"
 	@echo "  make soroban-test   # run soroban contract tests"
 
 print-env:
@@ -41,6 +42,7 @@ print-env:
 	@echo "SEND_AMOUNT=$(SEND_AMOUNT)"
 	@echo "REQUIRE_AUTH=$(REQUIRE_AUTH)"
 	@echo "REVOCABLE_AUTH=$(REVOCABLE_AUTH)"
+	@echo "CLAWBACK_ENABLED=$(CLAWBACK_ENABLED)"
 	@echo "SOURCE_SECRET=$$( case '$(SOURCE_SECRET)' in ''|S_*_HERE) echo '<unset/placeholder>' ;; *) echo '<set>' ;; esac )"
 	@echo "ISSUER_SECRET=$$( case '$(ISSUER_SECRET)' in ''|S_*_HERE) echo '<unset/placeholder>' ;; *) echo '<set>' ;; esac )"
 	@echo "DIST_SECRET=$$( case '$(DIST_SECRET)' in ''|S_*_HERE) echo '<unset/placeholder>' ;; *) echo '<set>' ;; esac )"
@@ -56,6 +58,7 @@ classic-asset:
 	ISSUE_AMOUNT="$(ISSUE_AMOUNT)" \
 	REQUIRE_AUTH="$(REQUIRE_AUTH)" \
 	REVOCABLE_AUTH="$(REVOCABLE_AUTH)" \
+	CLAWBACK_ENABLED="$(CLAWBACK_ENABLED)" \
 	bash scripts/create_classic_asset.sh
 
 register-sac:
@@ -85,20 +88,20 @@ onboard-user:
 	bash scripts/onboard_user_trustline.sh
 
 soroban-build:
-	@cd soroban/kyc_asset && cargo build --target wasm32v1-none --release
+	@cd soroban/compliance_registry && cargo build --target wasm32v1-none --release
 
 soroban-test:
-	@cd soroban/kyc_asset && cargo test
+	@cd soroban/compliance_registry && cargo test
 
 contract-deploy:
 	stellar contract deploy \
-  		--wasm soroban/kyc_asset/target/wasm32v1-none/release/kyc_asset.wasm \
+  		--wasm soroban/compliance_registry/target/wasm32v1-none/release/compliance_registry.wasm \
   		--source-account $(SOURCE_SECRET) \
   		--network $(NETWORK)
 
 contract-invoke:
 	stellar contract invoke \
-  		--id $(KYC_CONTRACT_ID) \
+  		--id $(COMPLIANCE_CONTRACT_ID) \
   		--source-account $(SOURCE_SECRET) \
   		--network $(NETWORK) \
   		-- init \
@@ -107,7 +110,7 @@ contract-invoke:
 
 contract-transfer:
 	stellar contract invoke \
-  		--id $(KYC_CONTRACT_ID) \
+  		--id $(COMPLIANCE_CONTRACT_ID) \
   		--source-account $(SOURCE_SECRET) \
   		--network $(NETWORK) \
   		-- transfer \

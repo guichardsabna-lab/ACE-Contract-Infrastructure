@@ -14,58 +14,40 @@
 ## Table of Contents
 
 1. [Executive Summary](#1-executive-summary)
-2. [Problem Statement](#2-problem-statement)
-3. [Solution Overview](#3-solution-overview)
-4. [Why Stellar](#4-why-stellar)
-5. [Core On-Chain Architecture](#5-core-on-chain-architecture)
-6. [Smart Contract Architecture](#6-smart-contract-architecture)
-7. [Tokenization Flow](#7-tokenization-flow)
-8. [Compliance Architecture](#8-compliance-architecture)
-9. [Cross-Chain Liquidity Bridge](#9-cross-chain-liquidity-bridge)
-10. [Wallet Architecture](#10-wallet-architecture)
-11. [Royalty Distribution Engine](#11-royalty-distribution-engine)
-12. [Off-Chain Infrastructure](#12-off-chain-infrastructure)
-13. [Security Model](#13-security-model)
-14. [DeFi Composability](#14-defi-composability)
-15. [ERC-1400 → Stellar Migration Strategy](#15-erc-1400--stellar-migration-strategy)
+2. [Solution Overview](#2-solution-overview)
+3. [Core On-Chain Architecture](#3-core-on-chain-architecture)
+4. [Smart Contract Architecture](#4-smart-contract-architecture)
+5. [Tokenization Flow](#5-tokenization-flow)
+6. [Compliance Architecture](#6-compliance-architecture)
+7. [Cross-Chain Liquidity Bridge](#7-cross-chain-liquidity-bridge)
+8. [Wallet Architecture](#8-wallet-architecture)
+9. [Royalty Distribution Engine](#9-royalty-distribution-engine)
+10. [Off-Chain Infrastructure](#10-off-chain-infrastructure)
+11. [Security Model](#11-security-model)
+12. [ERC-1400 → Stellar Migration Strategy](#12-erc-1400--stellar-migration-strategy)
+
+[Appendix B — ERC-1400 Migration Reference](#appendix-b--erc-1400-to-stellar-migration-reference)
+[Appendix C — SEP Alignment](#appendix-c--sep-alignment)
 
 ---
 
 ## 1. Executive Summary
 
-ACE FUND is a SaaS platform that enables film producers to tokenize revenue rights (royalties, box office receipts, TV distribution fees) and sell fractional ownership to investors. The platform has been operating on a private EVM chain (TaliumNet/Hyperledger Besu) since 2023, with **€1.2M+ in on-chain transactions** across 5 tokenized film projects, using the ERC-1400 security token standard.
+ACE FUND is a SaaS platform for tokenizing film revenue rights (royalties, box office, TV distribution) as regulated securities. The platform has been operating on a private EVM blockchain (Hyperledger Besu) that we developed, using the ERC-1400 security token standard.
 
-This submission requests funding to **migrate and extend the tokenization infrastructure to Stellar**, replacing the private EVM chain with a public network while adding native compliance enforcement, cross-chain liquidity access, and automated royalty distribution via Soroban smart contracts.
+This document describes the technical architecture for migrating and extending this tokenization infrastructure to Stellar, using a hybrid Classic Asset + Soroban smart contract architecture with native compliance enforcement, automated USDC royalty distribution, and cross-chain investor access.
 
-**Key metrics:**
-- €500K TV rights catalog tokenized (200 tokens × €2,500, 25%+ annual yield)
-- €700K tokenized on a single film production (1.5M budget)
-- 5 film projects tokenized, 15+ in pipeline
-- CES Las Vegas 2024 Innovation Award
-- Network of 100+ film directors and producers
-- Invited speaker at the Academy of Motion Pictures (Oscars) and Cannes Film Festival
+### Why Stellar
+
+- **Protocol-native compliance.** Authorization, freeze, and clawback (`AUTH_REQUIRED`, `AUTH_REVOCABLE`, `AUTH_CLAWBACK_ENABLED`) are enforced by the protocol itself, not by a third-party smart contract (§3.1, §6). For institutional investors, these guarantees are embedded in the infrastructure rather than depending on a contract deployed by an external party.
+- **Fees compatible with a 30–40 year horizon.** Royalties are distributed every six months to hundreds of investors for the entire commercial life of a film. On Stellar, each claim in our pull-based distribution model (§4.4) costs less than $0.001 and is fee-bumped by the platform — a full semi-annual distribution cycle for 500 investors settles for under a dollar, making decades of recurring distributions economically viable.
+- **Global on/off-ramps through the anchor network.** A growing share of our investors comes from Asia-Pacific, Africa, and Latin America, where reliable local liquidity partners are hard to source. Stellar's anchor network (SEP-6/24, Appendix C) addresses this directly — including MoneyGram for cash access across 174+ countries and Mercuryo for Africa, Latin America, and Eastern Europe.
 
 ---
 
-## 2. Problem Statement
+## 2. Solution Overview
 
-Film financing relies on opaque, illiquid instruments accessible only to institutional investors or high-net-worth individuals. Independent producers with 10% funding gaps (typically €150K–€1.5M) have no efficient mechanism to reach retail investors.
-
-**Current limitations on the private EVM chain:**
-
-| Problem | Impact |
-|---------|--------|
-| Private PoA chain (TaliumNet) | No public verifiability, limited trust |
-| No native stablecoin | Fiat on/off-ramp friction, no USDC settlement |
-| Closed ecosystem | No access to DeFi liquidity or institutional capital pools |
-| Third-party dependency | Talium operates the chain, ACE FUND has no sovereignty |
-| EVM-only investors | Excludes Stellar-native institutional capital (Franklin Templeton, SG Forge, etc.) |
-
----
-
-## 3. Solution Overview
-
-Migrate from private EVM chain to Stellar public network using a hybrid Classic Asset + Soroban architecture.
+Migration from our private EVM blockchain to Stellar public network using a hybrid Classic Asset + Soroban architecture.
 
 ### Global Architecture
 
@@ -86,8 +68,8 @@ graph TB
 
     subgraph STELLAR["STELLAR ON-CHAIN LAYER"]
         AF[AssetForge<br/>Film token issuance<br/>Classic Asset + SAC]
-        CR[ComplianceRegistry<br/>SEP-57 / T-REX<br/>Whitelist + transfer hooks]
-        RD[RoyaltyDistributor<br/>Batch USDC payouts<br/>per partition]
+        CR[ComplianceRegistry<br/>SEP-57 / T-REX<br/>Policy + transfer gateway<br/>SAC admin]
+        RD[RoyaltyDistributor<br/>Claim-based USDC distribution<br/>per partition]
         RO[RevenueOracle<br/>Signed revenue data<br/>from distributors]
         EWG[EVMWalletGateway<br/>secp256k1 smart wallet<br/>MetaMask / Rabby]
         PW[Passkey Wallet<br/>WebAuthn secp256r1<br/>Biometric login]
@@ -121,7 +103,7 @@ graph TB
     API --> RD
 
     KYC -->|KYC hash on-chain| CR
-    AF -->|Creates + wraps| CA
+    AF -->|Registers| CA
     CA --> SAC
     CR -->|Validates transfers| SAC
     RD -->|Distributes| USDC_S
@@ -146,103 +128,11 @@ graph TB
     style APP fill:#e5e7eb,color:#111
 ```
 
-### Film Token Lifecycle
-
-```mermaid
-sequenceDiagram
-    participant P as Film Producer
-    participant AF as AssetForge
-    participant CA as Classic Asset
-    participant SAC as SAC Wrapper
-    participant CR as ComplianceRegistry
-    participant I as Investor
-    participant RO as RevenueOracle
-    participant RD as RoyaltyDistributor
-
-    Note over P,RD: PHASE 1 — TOKEN CREATION
-    P->>AF: create_film_asset("HPREV", 300, REVENUE_RIGHTS)
-    AF->>CA: Issue Classic Asset (AUTH_REQUIRED + CLAWBACK)
-    AF->>SAC: Deploy SAC wrapper (SEP-41)
-    AF->>P: Mint 300 tokens to issuer
-
-    Note over P,RD: PHASE 2 — INVESTOR ONBOARDING
-    I->>CR: KYC via Sumsub (hash stored on-chain)
-    P->>CR: register_investor(investor_addr, "FR", kyc_hash)
-    P->>CA: setTrustlineFlags(investor, AUTHORIZED)
-
-    Note over P,RD: PHASE 3 — TOKEN PURCHASE
-    I->>SAC: transfer USDC to Producer
-    Note over CR: Platform orchestrator queries ComplianceRegistry
-    CR->>CR: check_transfer(from, to, amount) ✓
-    Note over P,CA: Orchestrator signs Authorization Sandwich
-    P->>CA: setTrustlineFlags(investor, AUTHORIZED)
-    P->>CA: payment(producer → investor, film tokens)
-    P->>CA: setTrustlineFlags(investor, MAINTAIN_LIABILITIES)
-
-    Note over P,RD: PHASE 4 — ROYALTY DISTRIBUTION (every 6 months)
-    RO->>RO: submit_revenue_report("Canal+", "2026-H2", €125K)
-    P->>RD: distribute(asset, 125000 USDC, report_hash)
-    RD->>I: USDC proportional to holdings
-    RD->>RD: Emit RoyaltyDistributed event
-```
-
 ---
 
-## 4. Why Stellar
+## 3. Core On-Chain Architecture
 
-Stellar is not interchangeable with other chains for this use case. The following features are **structurally required** and either unavailable or prohibitively expensive on EVM chains:
-
-### 4.1 Native Authorization Model
-
-Film royalty tokens are regulated securities. Every transfer must be pre-approved by the issuer. Stellar's `AUTH_REQUIRED` flag enables this **at the protocol level**, not via a smart contract workaround:
-
-- `AUTH_REQUIRED`: no wallet can hold tokens without explicit issuer approval
-- `AUTH_REVOCABLE`: issuer can freeze tokens in case of regulatory action or investor non-compliance
-- `AUTH_CLAWBACK_ENABLED`: issuer can recover tokens in case of fraud or court order — a legal requirement for securities in the EU
-
-On Ethereum, these features require custom ERC-1400 logic that adds gas costs and attack surface. On Stellar, they are **native protocol operations** with zero additional complexity.
-
-### 4.2 Authorization Sandwich Pattern
-
-For per-transfer approval of regulated securities:
-
-```
-1. Issuer authorizes sender (AUTHORIZED_FLAG)
-2. Issuer authorizes receiver (AUTHORIZED_FLAG)
-3. Payment executes
-4. Issuer revokes receiver to AUTHORIZED_TO_MAINTAIN_LIABILITIES
-5. Issuer revokes sender to AUTHORIZED_TO_MAINTAIN_LIABILITIES
-```
-
-Each transfer is individually approved. This is the exact regulatory model required for securities transfers under MiFID II. On Stellar, this is a native 5-operation atomic transaction. On EVM, it requires custom hooks, modifiers, and gas-intensive state changes.
-
-### 4.3 Classic Asset + SAC: Best of Both Worlds
-
-- **Classic Asset issuance**: native, gas-efficient (~$0.00001/tx), with built-in authorization and clawback
-- **SAC (Stellar Asset Contract)**: wraps the Classic Asset to expose the SEP-41 token interface to Soroban, enabling composability with smart contract logic (compliance hooks, distribution, oracle)
-- This dual layer is unique to Stellar: **protocol-level security + smart contract programmability**
-
-### 4.4 Native USDC
-
-Circle issues USDC **directly on Stellar** — not wrapped, not bridged, fully native. This enables:
-- Zero-bridge-risk settlement in USDC
-- Royalty distributions directly in USDC to investor wallets
-- Fiat off-ramp via Stellar anchors (MoneyGram, local partners) in 100+ countries
-- CCTP V2 for native cross-chain USDC transfers (burn/mint, no wrapped tokens)
-
-### 4.5 Cost Structure
-
-Royalty distributions require batch payments to hundreds of investors every 6 months. At Stellar's ~$0.00001/tx, distributing to 500 investors costs < $0.01. On Ethereum mainnet, the same operation costs $50–500+ depending on gas prices.
-
-### 4.6 Institutional Ecosystem
-
-Stellar hosts Franklin Templeton ($580M+ tokenized treasuries), SG Forge (EUR CoinVertible), PayPal (PYUSD). Film royalty tokens on Stellar sit alongside institutional-grade RWA — increasing credibility and access to institutional LP capital.
-
----
-
-## 5. Core On-Chain Architecture
-
-### 5.1 Asset Model
+### 3.1 Asset Model
 
 Each film or catalog is represented as a **Stellar Classic Asset** with the following issuer account configuration:
 
@@ -252,7 +142,7 @@ Issuer Account (per film)
 ├── AUTH_REVOCABLE_FLAG        = true
 ├── AUTH_CLAWBACK_ENABLED_FLAG = true
 ├── Home Domain                = acefund.io
-└── Asset Code                 = e.g., HPRES (High Pressure), MDFCATALOG
+└── Asset Code                 = e.g., FILMREV, MDFCATALOG
 ```
 
 The Classic Asset is then wrapped via SAC to expose the SEP-41 interface:
@@ -261,49 +151,49 @@ The Classic Asset is then wrapped via SAC to expose the SEP-41 interface:
 stellar contract asset deploy \
   --source <issuer_keypair> \
   --network mainnet \
-  --asset HPRES:<issuer_public_key>
+  --asset FILMREV:<issuer_public_key>
 ```
 
 The issuer account's keypair is held by the **film producer** (the legal issuer of the securities), not by ACE FUND. ACE FUND provides the tooling; the producer retains sovereignty.
 
-### 5.2 Partition Model (ERC-1400 Equivalent)
+### 3.2 Partition Model (ERC-1400 Equivalent)
 
 On the existing EVM platform, film tokens use ERC-1400 partitions to separate different tranches of the same film (e.g., "revenue rights" vs "IP rights"). On Stellar, partitions are implemented as **separate Classic Assets issued by the same issuer account**:
 
 ```
-Film: "High Pressure" (Issuer: GFILM...)
-├── HPREV (Revenue Rights) — 300 tokens × €5,000
-├── HPCAT (Catalog Rights) — future tranche
+Film: "Example Film" (Issuer: GFILM...)
+├── FILMREV (Revenue Rights) — 300 tokens × €5,000
+├── FILMCAT (Catalog Rights) — future tranche
 └── Each asset: AUTH_REQUIRED + CLAWBACK + SAC wrapper
 ```
 
-This preserves the ERC-1400 partition semantics while leveraging Stellar's native asset model. The `AssetForge` Soroban contract automates the creation and configuration of these asset partitions.
+This preserves the ERC-1400 partition semantics while leveraging Stellar's native asset model. Asset creation and flag configuration are Classic operations executed off-chain (§4.2); the `AssetForge` Soroban contract registers and indexes these partitions on-chain for use by downstream contracts.
 
 ---
 
-## 6. Smart Contract Architecture
+## 4. Smart Contract Architecture
 
 Five core Soroban contracts orchestrate the on-chain lifecycle:
 
-### 6.1 Contract Overview
+### 4.1 Contract Overview
 
 ```mermaid
 graph LR
     subgraph SOROBAN["SOROBAN SMART CONTRACTS"]
         AF[AssetForge<br/>Creates film assets<br/>+ SAC wrapper]
         CR[ComplianceRegistry<br/>SEP-57 aligned<br/>Whitelist + hooks]
-        RD[RoyaltyDistributor<br/>Batch USDC payouts]
+        RD[RoyaltyDistributor<br/>Claim-based USDC distribution]
         RO[RevenueOracle<br/>Signed revenue data<br/>from distributors]
         EWG[EVMWalletGateway<br/>secp256k1 smart wallet]
     end
 
     AF -->|Registers asset| CR
-    CR -->|Validates transfers| RD
+    CR -->|Settles open distributions<br/>on transfer §4.4| RD
     RO -->|Revenue data| RD
     EWG -->|Auth via secp256k1| CR
 
     CA[Classic Asset<br/>AUTH_REQUIRED<br/>+ CLAWBACK] --> SAC[SAC<br/>SEP-41]
-    AF -->|Creates| CA
+    AF -->|Registers| CA
     SAC -->|Token interface| RD
 
     USDC[USDC Native] -->|Settlement| RD
@@ -311,9 +201,9 @@ graph LR
     style SOROBAN fill:#1a1a2e,color:#fff
 ```
 
-### 6.2 AssetForge
+### 4.2 AssetForge
 
-**Purpose:** Automates the creation of film token partitions on Stellar.
+**Purpose:** On-chain registry for film token partitions on Stellar. Classic Asset creation and flag configuration are executed off-chain via Stellar SDK/CLI; this contract registers the resulting assets with metadata for use by downstream contracts.
 
 **Functions:**
 
@@ -347,34 +237,60 @@ pub fn get_film_assets(
 
 **Storage:** Persistent storage maps `issuer → Vec<FilmAsset>` where `FilmAsset` includes asset code, SAC address, total supply, partition type, and creation timestamp.
 
-### 6.3 ComplianceRegistry (SEP-57 / T-REX Aligned)
+### 4.3 ComplianceRegistry (SEP-57 / T-REX Aligned)
 
 **Purpose:** On-chain policy registry for investor whitelist and transfer restriction rules. Aligned with the T-REX framework (ERC-3643 adapted to Stellar via SEP-57, currently in draft).
 
-**Important architectural clarification:** The ComplianceRegistry is a **policy oracle**, not an in-line enforcement hook on SAC transfers. The Stellar Asset Contract (SAC) is auto-generated wrapper code that exposes the SEP-41 interface for an underlying Classic Asset — it is not extensible and does not call external contracts on transfer. The actual on-chain enforcement gate is the **Authorization Sandwich pattern** (see §8.2), where the issuer's `AUTH_REQUIRED` flag controls every transfer at the protocol level. The ComplianceRegistry is consulted by the platform orchestrator **before** the sandwich is signed.
+**Important architectural clarification:** The ComplianceRegistry is both the **policy layer** and the **transfer gateway**. The Stellar Asset Contract (SAC) is auto-generated wrapper code that exposes the SEP-41 interface for an underlying Classic Asset — it is not extensible and does not call external contracts on transfer. Enforcement therefore relies on Stellar's native authorization model (`AUTH_REQUIRED`), applied differently depending on the holder type:
+
+- **Contract-held balances (smart wallets, `C...` addresses)** — the standard case on this platform. Investor smart wallets (passkey or EVM gateway) hold film tokens as **SAC contract balances**, not trustlines. Because the asset is `AUTH_REQUIRED`, these balances are unauthorized by default and cannot send or receive. At asset creation, the issuer transfers SAC admin to the ComplianceRegistry (`set_admin`). Every transfer is executed through a single atomic Soroban invocation, `ComplianceRegistry.execute_transfer()`, which: (1) runs the full policy check, (2) `set_authorized(from, true)` and `set_authorized(to, true)` on the SAC, (3) calls `SAC.transfer()`, (4) revokes authorization on both sides. Policy check and transfer are in the **same invocation** — no time-of-check/time-of-use gap, and no way to move tokens outside the gateway.
+- **Account-held balances (`G...` addresses, e.g. issuer treasury or institutional custody accounts)** — classic trustlines apply. Transfers use the **Authorization Sandwich pattern** (see §6.1): a 5-operation Classic transaction signed by the issuer (§8.5), submitted only after `check_transfer()` passes. Since Classic operations and Soroban invocations cannot be mixed in one transaction, the policy check for this rail is evaluated via RPC simulation of `check_transfer()` (a read-only call — no on-chain transaction needed), and the protocol-level `AUTH_REQUIRED` flag remains the binding gate: even if the check is bypassed, an unauthorized trustline cannot send or receive.
+
+Ultimate authority rests with the producer on both rails: the admin of the ComplianceRegistry (policy configuration, trustee designation, upgrade, freeze/clawback) is the **issuer** (§8.5), while the issuer account signs all Classic-side authorization operations. Routine investor registration is delegated to a **registrar** role (the platform's KYC automation), designated and revocable by the issuer.
 
 **Design:**
 
 ```rust
 pub fn register_investor(
     env: Env,
-    issuer: Address,         // Only the film producer can register
+    registrar: Address,      // Registrar role — designated by the
+                             // issuer (typically the platform's
+                             // KYC automation service)
     investor: Address,       // Stellar address (Account or Contract)
     jurisdiction: Symbol,    // ISO 3166-1 country code
     kyc_hash: BytesN<32>,   // Hash of KYC verification result
     expiry: u64             // KYC validity timestamp
 ) -> Result<(), ComplianceError> {
-    issuer.require_auth();
+    registrar.require_auth();
     // ...
 }
 
 pub fn revoke_investor(
     env: Env,
-    issuer: Address,
+    registrar: Address,
     investor: Address
 ) -> Result<(), ComplianceError> {
-    issuer.require_auth();
+    registrar.require_auth();
     // ...
+}
+
+pub fn execute_transfer(
+    env: Env,
+    from: Address,           // Must authorize (smart wallet __check_auth)
+    to: Address,
+    asset: Address,          // SAC address of the film token
+    amount: i128
+) -> Result<(), ComplianceError> {
+    from.require_auth();
+    // Single atomic invocation (smart-wallet rail):
+    // 1. check_transfer(asset, from, to, amount) — full policy check
+    // 2. RoyaltyDistributor.settle_on_transfer(asset, from, to, amount)
+    //    — settles open distributions to prevent double-claims (§4.4)
+    // 3. SAC.set_authorized(from, true); SAC.set_authorized(to, true)
+    //    (ComplianceRegistry is the SAC admin — see clarification above)
+    // 4. SAC.transfer(from, to, amount)
+    // 5. SAC.set_authorized(to, false); SAC.set_authorized(from, false)
+    // Emits TransferExecuted event
 }
 
 pub fn check_transfer(
@@ -384,7 +300,9 @@ pub fn check_transfer(
     to: Address,
     amount: i128
 ) -> Result<(), ComplianceError>;
-// Called by the platform orchestrator BEFORE signing the Authorization Sandwich.
+// Read-only policy check. Called internally by execute_transfer(), and
+// evaluated via RPC simulation before signing an Authorization Sandwich
+// on the classic (G-account) rail.
 // Verifies:
 // 1. Both sender and receiver are whitelisted
 // 2. Receiver's KYC has not expired
@@ -392,6 +310,34 @@ pub fn check_transfer(
 // 4. Max investor count per asset is not exceeded (150/jurisdiction)
 // 5. Holding limits are respected
 // Returns Ok(()) if compliant, Err(ComplianceError) with specific reason if not.
+
+pub fn freeze(
+    env: Env,
+    admin: Address,      // Issuer (with timelock for sensitive ops)
+    asset: Address,
+    holder: Address
+) -> Result<(), ComplianceError> {
+    admin.require_auth(); // Issuer authorization (timelock enforced off-chain for sensitive ops)
+    // Marks the holder as frozen in the registry — check_transfer() fails
+    // for frozen holders on BOTH rails (execute_transfer and sandwich
+    // simulation). For G... holders the platform additionally submits
+    // setTrustlineFlags (§11.3). Reversible via unfreeze().
+}
+
+pub fn clawback(
+    env: Env,
+    admin: Address,      // Issuer (with timelock for sensitive ops)
+    asset: Address,
+    from: Address,
+    amount: i128
+) -> Result<(), ComplianceError> {
+    admin.require_auth(); // Issuer authorization (timelock enforced off-chain for sensitive ops)
+    // As SAC admin, calls SAC.clawback(from, amount) — this is how
+    // smart-wallet (C...) contract balances are clawed back after
+    // set_admin has transferred SAC admin to this contract. For G...
+    // trustlines the issuer uses the Classic clawback operation directly.
+    // See §11.3 for the operational policy.
+}
 
 pub fn is_whitelisted(
     env: Env,
@@ -418,27 +364,37 @@ pub fn get_investor_count(
 | `kyc_expiry_days` | KYC validity period | 365 days |
 | `transfer_cooldown` | Minimum holding period | 0 (configurable) |
 
-**Enforcement model — Authorization Sandwich + Policy Oracle:**
+**Enforcement model — dual rail, one policy:**
 
-The ComplianceRegistry works in tandem with the issuer's `AUTH_REQUIRED` flag via the **Authorization Sandwich pattern**. The flow for every regulated transfer is:
+Both rails share the same policy source (`check_transfer()`) and the same protocol-level gate (`AUTH_REQUIRED`); they differ only in the mechanism that flips authorization around the transfer.
 
-1. **Default state:** All investor trustlines are set to `AUTHORIZED_TO_MAINTAIN_LIABILITIES` — investors can hold tokens but **cannot send or receive** without explicit issuer approval per transfer.
-2. **Transfer request:** The platform orchestrator receives a transfer request and calls `ComplianceRegistry.check_transfer()` to verify policy compliance.
-3. **If compliant:** The orchestrator constructs and submits a 5-operation atomic transaction (the Authorization Sandwich):
+**Rail 1 — Smart wallets (`C...` addresses, default investor rail):**
+
+1. **Default state:** SAC contract balances are unauthorized — smart wallets can hold film tokens but **cannot send or receive**.
+2. **Transfer request:** The investor's smart wallet invokes `ComplianceRegistry.execute_transfer()` (signed via passkey or EVM key).
+3. **Single atomic invocation:** policy check → settle open distributions (§4.4) → `set_authorized(from)` → `set_authorized(to)` → `SAC.transfer()` → de-authorize both. If any step fails, the whole invocation reverts.
+4. **If non-compliant:** The invocation aborts at step 1 with the specific `ComplianceError` (expired KYC, blocked jurisdiction, investor cap reached, etc.). Authorization is never granted.
+
+**Rail 2 — Classic accounts (`G...` addresses, treasury / institutional custody):**
+
+1. **Default state:** Under `AUTH_REQUIRED`, a new trustline starts fully unauthorized (flags = 0). Once the holder is whitelisted, the issuer sets it to `AUTHORIZED_TO_MAINTAIN_LIABILITIES` — the holder keeps their balance and open offers but **cannot send or receive** without per-transfer issuer approval.
+2. **Transfer request:** The platform orchestrator simulates `ComplianceRegistry.check_transfer()` via RPC to verify policy compliance.
+3. **Distribution settlement:** The platform submits a Soroban transaction invoking `RoyaltyDistributor.settle_on_transfer()` (§4.4) — Classic operations and Soroban invocations cannot share a transaction, so settlement runs first, and the sandwich is signed only after it confirms. Until then the trustline remains non-authorized, so no unsettled transfer can occur.
+4. **If compliant:** A 5-operation atomic Classic transaction (the Authorization Sandwich) is signed by the issuer (§8.5):
    - (a) `setTrustlineFlags(sender, AUTHORIZED_FLAG)` — temporarily authorize sender
    - (b) `setTrustlineFlags(receiver, AUTHORIZED_FLAG)` — temporarily authorize receiver
    - (c) `payment(sender → receiver, amount)` — execute the transfer
    - (d) `setTrustlineFlags(receiver, AUTHORIZED_TO_MAINTAIN_LIABILITIES)` — revoke receiver
    - (e) `setTrustlineFlags(sender, AUTHORIZED_TO_MAINTAIN_LIABILITIES)` — revoke sender
-4. **If non-compliant:** The orchestrator rejects the transfer. No sandwich is signed. The `ComplianceError` variant is returned to the caller (expired KYC, blocked jurisdiction, investor cap reached, etc.).
+5. **If non-compliant:** No sandwich is signed; the transfer is rejected with the specific `ComplianceError`.
 
-**Why this model works:** The protocol-level `AUTH_REQUIRED` flag is the **binding on-chain enforcement gate** — no transfer can execute without the issuer's signature on the sandwich. The ComplianceRegistry provides the **policy logic** that determines whether the issuer should sign. This separation means:
+**Why this model works:** The protocol-level `AUTH_REQUIRED` flag is the **binding on-chain enforcement gate** on both rails — a balance that is not explicitly authorized cannot move, whether it lives in a trustline or in SAC contract storage. The ComplianceRegistry provides the **policy logic** and, on the smart-wallet rail, executes the authorization itself as SAC admin. This means:
 
-- **No bypass possible:** Even if an investor attempts a direct Classic Asset payment (bypassing the platform), the transfer fails because their trustline is in `AUTHORIZED_TO_MAINTAIN_LIABILITIES` state — sending is blocked at the protocol level.
-- **Peer-to-peer transfers on Stellar DEX are blocked by design:** The default trustline state prevents offers and direct payments. All transfers must go through the platform orchestrator.
-- **Granular policy enforcement:** Classic Assets alone cannot express jurisdiction limits, investor caps, or KYC expiry — the ComplianceRegistry adds this business logic layer that the orchestrator consults before signing.
+- **No bypass possible:** A direct `SAC.transfer()` from a smart wallet fails (balance unauthorized); a direct Classic payment from a `G` account fails (trustline in `AUTHORIZED_TO_MAINTAIN_LIABILITIES`). All paths converge on the compliance gateway.
+- **Peer-to-peer transfers on the Stellar DEX are blocked by design:** the default trustline state prevents new offers and direct payments.
+- **Granular policy enforcement:** Classic Assets alone cannot express jurisdiction limits, investor caps, or KYC expiry — the ComplianceRegistry adds this business logic layer and enforces it in the same atomic invocation as the transfer.
 
-### 6.4 RoyaltyDistributor
+### 4.4 RoyaltyDistributor
 
 **Purpose:** Manages royalty distribution in USDC to all token holders of a given film asset, proportional to their holdings.
 
@@ -459,11 +415,11 @@ pub fn create_distribution(
     env: Env,
     issuer: Address,              // Must authorize
     asset: Address,               // SAC address of the film token
-    period: Symbol,               // e.g., "2026-H1"
+    period: Symbol,               // e.g., "H1_2026"
     total_usdc: i128,             // Total USDC deposited for this period
     total_supply_snapshot: i128,  // Total token supply at snapshot
     revenue_report_hash: BytesN<32>, // Hash of signed revenue report
-    claim_expiry: u64             // Ledger number after which unclaimed funds revert
+    claim_expiry: u64             // Unix timestamp after which unclaimed funds revert
 ) -> Result<(), DistributionError> {
     issuer.require_auth();
     // 1. Transfers total_usdc from issuer to the contract
@@ -485,6 +441,25 @@ pub fn claim(
     // 5. Records claim (prevents double-claim)
     // 6. Emits RoyaltyClaimed event
     // Returns: USDC amount claimed
+}
+
+pub fn settle_on_transfer(
+    env: Env,
+    caller: Address,              // ComplianceRegistry (smart-wallet rail)
+                                  // or the registrar / platform service
+                                  // (classic rail, §4.3)
+    asset: Address,
+    from: Address,
+    to: Address,
+    amount: i128
+) -> Result<(), DistributionError> {
+    caller.require_auth();
+    // For every open distribution period on this asset:
+    // 1. Pays out (or forfeits, per policy) the sender's pending claim
+    // 2. Marks the transferred amount as claimed for the receiver
+    // Called by ComplianceRegistry.execute_transfer() in the same atomic
+    // invocation (smart-wallet rail), and by the platform before an
+    // Authorization Sandwich is signed (classic rail) — see §4.3.
 }
 
 pub fn reclaim_expired(
@@ -527,7 +502,7 @@ pub struct RoyaltyDistributed {
     #[topic]
     asset: Address,
     #[topic]
-    period: Symbol,              // e.g., "2026-H1"
+    period: Symbol,              // e.g., "H1_2026"
     total_usdc: i128,
     total_supply_snapshot: i128,
     revenue_hash: BytesN<32>,
@@ -544,11 +519,11 @@ pub struct RoyaltyClaimed {
 }
 ```
 
-**Snapshot mechanism:** The `total_supply_snapshot` is recorded at distribution creation time. The contract uses `SAC.balance(investor)` at claim time to verify the investor's current holdings. For the MVP, the snapshot is the balance at claim time (last-holder-gets-paid model). A future evolution may implement block-height snapshots via an indexed off-chain snapshot service, passed as a Merkle proof to the contract.
+**Snapshot mechanism:** The `total_supply_snapshot` is recorded at distribution creation time, and the contract reads `SAC.balance(investor)` at claim time to compute the pro-rata share. Because balances are read at claim time, a naive design would allow the same tokens to claim twice (claim, transfer to a fresh address, claim again). This is structurally prevented by **settlement-on-transfer** (`settle_on_transfer()`, above) on both rails: on the smart-wallet rail, `ComplianceRegistry.execute_transfer()` (§4.3) calls it within the same atomic invocation before moving tokens; on the classic rail, the platform submits it as a prior Soroban transaction and the Authorization Sandwich is signed only after settlement confirms — the trustline stays non-authorized until then, so tokens cannot move unsettled on either rail. The sender's pending claim for any open period is paid out (or forfeited per policy) at transfer time, and the received tokens are marked as claimed for all periods open at the time of receipt. Tokens therefore claim exactly once per period regardless of transfers. A future evolution may replace this with block-height snapshots via an indexed off-chain snapshot service, passed as a Merkle proof to the contract.
 
-**Cost structure:** Each claim is a single Soroban transaction (~1 cross-contract call to SAC + 1 USDC transfer). At Stellar's fee structure, cost per claim is < $0.001. For 300 investors, the platform can auto-trigger claims via fee-bumped transactions, providing a push-like UX while using the pull architecture underneath.
+**Cost structure:** Each claim is a single Soroban transaction (~1 cross-contract call to SAC + 1 USDC transfer). At Stellar's fee structure, cost per claim is < $0.001. Claims always require the investor's own signature (`investor.require_auth()`) — the platform cannot claim on an investor's behalf. To provide a near-push UX, the platform notifies investors when a distribution opens and prompts a one-tap claim (passkey biometric or MetaMask signature); the resulting transaction is fee-bumped by the platform so the investor pays no fees.
 
-### 6.5 RevenueOracle
+### 4.5 RevenueOracle
 
 **Purpose:** On-chain publication of verified revenue data for each film asset. Provides investors with an independently verifiable link between off-chain film revenues and on-chain distribution payouts.
 
@@ -570,7 +545,7 @@ pub fn submit_revenue_report(
     env: Env,
     trustee: Address,             // Designated reporting trustee
     asset: Address,               // Film token SAC address
-    period: Symbol,               // "2026-H1"
+    period: Symbol,               // "H1_2026"
     gross_revenue: i128,          // In cents (EUR or USD)
     net_distributable: i128,      // After deductions
     report_hash: BytesN<32>,      // IPFS hash of full report + supporting docs
@@ -625,11 +600,11 @@ pub struct RevenueReport {
 | **Producer (Issuer)** | Film production company | Yes — admin | Designates the reporting trustee at asset creation; can replace trustee |
 | **Investors** | Token holders | No (passive consumers) | Can query reports on-chain; contractual audit rights against the trustee |
 
-**Trustee qualifications:** The producer designates one reporting trustee per film at issuance, identified in the legal contract. For films with large distribution amounts (> €1M per period), a dual-trustee model is recommended: two authorized trustees must both submit concordant reports before the distribution is triggered.
+**Trustee qualifications:** The producer designates one reporting trustee per film at issuance, identified in the legal contract.
 
 **Dispute mechanism:** Investors who believe reported revenue is incorrect have contractual recourse via audit rights against the trustee (specified in the investment agreement). This is a legal mechanism, not an on-chain feature, but the on-chain report provides the auditable reference point.
 
-### 6.6 EVMWalletGateway
+### 4.6 EVMWalletGateway
 
 **Purpose:** Smart wallet contract that enables investors with EVM wallets (MetaMask, Rabby) to interact with Stellar without managing a separate Stellar keypair.
 
@@ -672,9 +647,9 @@ pub fn get_stellar_address(
 
 ---
 
-## 7. Tokenization Flow
+## 5. Tokenization Flow
 
-### 7.1 Film Onboarding (Issuer Side)
+### 5.1 Film Onboarding (Issuer Side)
 
 ```
 Producer (Issuer)
@@ -685,20 +660,24 @@ Producer (Issuer)
 3. Signs via DocuSign/Yousign
       │
       ▼
-4. ACE FUND generates a Stellar keypair for the issuer
-   (or links existing Stellar account)
-5. AssetForge.create_film_asset() is called:
-   - Creates Classic Asset with AUTH_REQUIRED + CLAWBACK
-   - Deploys SAC wrapper
-   - Registers asset metadata (IPFS hash of legal contract)
-   - Mints total supply to issuer account
+4. Issuer keypair is generated client-side, in the producer's browser
+   (or the producer links an existing Stellar account).
+   The producer holds the keys — ACE FUND never has access (§3.1)
+5. Asset issuance (off-chain Classic operations, producer-signed,
+   transaction prepared by the platform tooling):
+   - Create Classic Asset with AUTH_REQUIRED + AUTH_REVOCABLE + CLAWBACK
+   - Deploy SAC wrapper, transfer SAC admin to ComplianceRegistry (§4.3)
+   - Issue total supply to the issuer's distribution account
+6. AssetForge.register_film_asset() records the asset on-chain:
+   - Links SAC address + metadata (IPFS hash of legal contract)
+   - Makes the asset visible to ComplianceRegistry and RoyaltyDistributor
       │
       ▼
-6. Film is listed on the ACE FUND marketplace
+7. Film is listed on the ACE FUND marketplace
    Tokens are ready for sale
 ```
 
-### 7.2 Investment Flow (Investor Side)
+### 5.2 Investment Flow (Investor Side)
 
 **Stellar-native or traditional investor:**
 
@@ -714,20 +693,21 @@ Investor
    ▼
 2. KYC via Sumsub (delegated to film producer)
    → On success: ComplianceRegistry.register_investor()
-   → Investor's Stellar address whitelisted on-chain
-   → Issuer sets trustline AUTHORIZED_FLAG
+   → Investor's smart wallet address (C...) whitelisted on-chain
    │
    ▼
 3. Payment: fiat via BridgerPay → on-ramp to USDC via Stellar anchor
    or: USDC on Stellar directly
    │
    ▼
-4. Purchase: investor sends USDC to issuer, issuer transfers film tokens
-   → Platform orchestrator calls ComplianceRegistry.check_transfer()
-   → If compliant: orchestrator signs the Authorization Sandwich
-     (authorize sender → authorize receiver → payment → revoke both)
-   → Transfer executes as a single atomic transaction
-   → Tokens arrive in investor's passkey wallet
+4. Purchase: atomic delivery-versus-payment (DvP), single Soroban invocation
+   → USDC.transfer(investor → issuer) and
+     ComplianceRegistry.execute_transfer(issuer → investor) are composed
+     in ONE transaction: payment and token delivery settle atomically —
+     both happen or neither does (§4.3)
+   → If non-compliant: the invocation reverts, nothing moves
+     (neither USDC nor film tokens)
+   → Tokens arrive in investor's passkey wallet (SAC contract balance)
 ```
 
 **EVM-native investor:**
@@ -752,40 +732,25 @@ EVM Investor (MetaMask / Rabby)
    → USDC arrives on their Stellar smart wallet
    │
    ▼
-4. Purchase: same Authorization Sandwich flow
-   → Investor signs USDC payment with MetaMask
+4. Purchase: same atomic DvP flow (USDC payment + token delivery
+   in one Soroban invocation)
+   → Investor signs the transaction with MetaMask
    → EVMWalletGateway.__check_auth() verifies secp256k1 signature
-   → Platform orchestrator validates via ComplianceRegistry
-   → Orchestrator signs the sandwich for the film token transfer
+   → ComplianceRegistry.execute_transfer() checks policy and
+     executes the film token transfer atomically (§4.3)
 ```
 
 ---
 
-## 8. Compliance Architecture
+## 6. Compliance Architecture
 
-### 8.1 Regulatory Framework
-
-ACE FUND operates under the **EU private placement exemption** (Regulation EU 2017/1129):
-
-| Requirement | Implementation |
-|-------------|----------------|
-| < 150 investors per EU Member State | `ComplianceRegistry.max_investors_per_jurisdiction` enforced on-chain |
-| < €8M total consideration per 12 months | Tracked off-chain per issuer; on-chain cap configurable |
-| No public solicitation | Private club model (membership required) |
-| KYC/AML verification | Sumsub integration, delegated to issuer (producer) |
-| Self-custody (no custody license required) | Passkey wallets (WebAuthn) + EVMWalletGateway (secp256k1) |
-
-**ACE FUND's regulatory position:** ACE FUND is a **technology provider** (SaaS platform), not an investment intermediary. The film producer is the legal issuer of the securities and bears KYC/AML responsibility. ACE FUND provides the infrastructure (smart contracts, marketplace UI, KYC SDK integration) but does not hold tokens, funds, or investor data.
-
-**Broader regulatory landscape:** Film royalty tokens granting a stream of revenue rights are likely to qualify as transferable securities under MiFID II (Annex I, Section C). MiCA (Regulation EU 2023/1114) applies to crypto-assets that are not MiFID II instruments — since film tokens are likely MiFID II instruments, MiCA does not apply to the tokens themselves but may apply to ancillary services. ACE FUND's non-custodial design and the fact that only USDC (not film tokens) is bridged limit MiCA exposure. A formal legal opinion on the MiFID II / MiCA boundary is being obtained during the project.
-
-### 8.2 On-Chain Compliance Enforcement
+### 6.1 On-Chain Compliance Enforcement
 
 **Authorization Sandwich + Policy Oracle model:**
 
 ```mermaid
 graph TB
-    TX[Transfer Request] --> ORCH[Platform Orchestrator]
+    TX[Transfer Request]
 
     subgraph POLICY["POLICY LAYER (ComplianceRegistry — Soroban)"]
         CT[check_transfer<br/>from, to, amount]
@@ -795,14 +760,21 @@ graph TB
         HL[Holding Limits<br/>Max % per investor]
     end
 
-    ORCH -->|1. Query policy| CT
     CT --> WL
     CT --> JR
     CT --> MI
     CT --> HL
     CT -->|Non-compliant| FAIL[Transfer Rejected ✗]
 
-    subgraph PROTOCOL["ENFORCEMENT LAYER (Classic Asset — Protocol Level)"]
+    subgraph RAIL1["RAIL 1 — SMART WALLETS (C... addresses, single atomic invocation)"]
+        ET[execute_transfer]
+        A0["settle_on_transfer<br/>(RoyaltyDistributor §4.4)"]
+        A1["set_authorized(from, true)<br/>set_authorized(to, true)"]
+        A2["SAC.transfer(from, to, amount)"]
+        A3["set_authorized(to, false)<br/>set_authorized(from, false)"]
+    end
+
+    subgraph RAIL2["RAIL 2 — CLASSIC ACCOUNTS (G... addresses, Authorization Sandwich)"]
         S1["(a) setTrustlineFlags<br/>sender → AUTHORIZED"]
         S2["(b) setTrustlineFlags<br/>receiver → AUTHORIZED"]
         S3["(c) Payment executes"]
@@ -810,40 +782,44 @@ graph TB
         S5["(e) setTrustlineFlags<br/>sender → MAINTAIN_LIABILITIES"]
     end
 
-    CT -->|Compliant| SIGN[2. Orchestrator signs<br/>Authorization Sandwich]
-    SIGN --> S1 --> S2 --> S3 --> S4 --> S5 --> OK[Transfer Executed ✓]
+    TX -->|Smart wallet| ET
+    ET -->|Policy check| CT
+    CT -->|Compliant| A0 --> A1 --> A2 --> A3 --> OK[Transfer Executed ✓]
 
-    BYPASS[Direct transfer attempt<br/>bypassing platform] -->|Blocked| DEFAULT[Default trustline state:<br/>AUTHORIZED_TO_MAINTAIN_LIABILITIES<br/>Cannot send or receive]
+    TX -->|Classic account| SIM[RPC simulation of<br/>check_transfer]
+    SIM -->|Policy check| CT
+    CT -->|Compliant| SET[settle_on_transfer<br/>Soroban tx §4.4]
+    SET --> SIGN[Issuer signs<br/>Authorization Sandwich §8.5]
+    SIGN --> S1 --> S2 --> S3 --> S4 --> S5 --> OK
+
+    BYPASS[Direct transfer attempt<br/>bypassing platform] -->|Blocked| DEFAULT[Default state:<br/>SAC balance unauthorized /<br/>trustline AUTHORIZED_TO_MAINTAIN_LIABILITIES<br/>Cannot send or receive]
 
     style POLICY fill:#1a1a2e,color:#fff
-    style PROTOCOL fill:#1e3a5f,color:#fff
+    style RAIL1 fill:#1e3a5f,color:#fff
+    style RAIL2 fill:#1e3a5f,color:#fff
     style OK fill:#10b981,color:#fff
     style FAIL fill:#ef4444,color:#fff
     style DEFAULT fill:#374151,color:#fff
 ```
 
-**How the two layers interact:**
+**Two-layer enforcement:** Layer 1 (the `AUTH_REQUIRED` flag, enforced by the protocol on trustlines and by the SAC on contract balances) is the binding gate — an unauthorized balance cannot move, on either rail. Layer 2 (ComplianceRegistry Soroban contract) provides the policy logic (KYC, jurisdictions, holding limits) and, on the smart-wallet rail, executes the authorization itself as SAC admin. See §4.3 for the detailed enforcement flow.
 
-- **Layer 1 (Protocol — Classic Asset flags):** The binding on-chain enforcement gate. All investor trustlines default to `AUTHORIZED_TO_MAINTAIN_LIABILITIES` — investors can hold tokens but cannot send or receive without the issuer signing an Authorization Sandwich per transfer. This is a **native Stellar protocol operation** with zero smart contract overhead. Any attempt to transfer tokens directly (Stellar DEX, peer-to-peer payment, or bypassing the platform) **fails at the protocol level**.
+Even if the off-chain orchestrator is compromised, the protocol-level flag still blocks unauthorized transfers. Every authorization decision leaves an auditable on-chain record (ComplianceRegistry events + SAC authorization state changes).
 
-- **Layer 2 (Policy — ComplianceRegistry contract):** The granular business logic that determines whether the issuer should authorize a given transfer. Classic Assets alone cannot express jurisdiction caps, KYC expiry, or holding limits. The ComplianceRegistry encodes these rules on-chain, queryable by the orchestrator before each sandwich is signed.
-
-**Defense in depth:** Even if the orchestrator's policy check is somehow bypassed (e.g., compromised API), the protocol-level `AUTH_REQUIRED` flag still blocks any unauthorized transfer. Conversely, even if an investor's trustline were somehow authorized, the ComplianceRegistry provides an auditable on-chain record of whether the transfer should have been permitted.
-
-### 8.3 Token Bridgeability Restriction
+### 6.2 Token Bridgeability Restriction
 
 Film royalty tokens are **non-bridgeable by design**. The `AUTH_REQUIRED` flag prevents any wallet (including bridge contracts) from holding tokens without explicit issuer approval. Bridge contracts will never be whitelisted in the `ComplianceRegistry`.
 
 **Only USDC is bridgeable.** Investors can bridge liquidity IN (USDC from any chain → Stellar) and bridge liquidity OUT (USDC from Stellar → any chain). The security tokens remain on Stellar at all times, under full compliance enforcement. CCTP V2 (Circle's native burn/mint) is recommended over Allbridge Core (pool-based) wherever the source chain supports it, as it carries materially lower counterparty risk.
 
-### 8.4 Data Privacy (GDPR)
+### 6.3 Data Privacy (GDPR)
 
 On-chain data is pseudonymous: Stellar addresses + KYC hashes. PII (name, identity documents, residency proof) is held off-chain in encrypted storage by the issuer (OVH Cloud, EU data residency).
 
 - **Article 17 (right to erasure):** Satisfied by deleting the off-chain link between the Stellar address and the investor's legal identity. The on-chain record (address + hash) becomes orphan and non-attributable. Erasure does not retroactively delete on-chain transfer history — this is disclosed to investors at onboarding and accepted in the shareholder agreement.
 - **Data retention:** PII is held only for the duration required by AML/accounting/contractual obligations (typically 5–10 years post-position-close), then deleted.
 
-### 8.5 AML / Travel Rule
+### 6.4 AML / Travel Rule
 
 - **Issuer AML/CTF program:** Transaction monitoring, suspicious activity reporting, and sanctions screening are delegated obligations under the SaaS framing — the film producer (issuer) is the responsible entity. The platform provides tooling (Sumsub transaction monitoring, flagging rules) but does not make compliance decisions.
 - **Sanctions screening:** Performed at onboarding and re-screened on an ongoing basis (daily automated re-screening against OFAC / EU consolidated sanctions list).
@@ -851,16 +827,16 @@ On-chain data is pseudonymous: Stellar addresses + KYC hashes. PII (name, identi
 
 ---
 
-## 9. Cross-Chain Liquidity Bridge
+## 7. Cross-Chain Liquidity Bridge
 
-### 9.1 Architecture
+### 7.1 Architecture
 
 ```mermaid
 graph LR
-    subgraph EVM["EVM CHAINS"]
+    subgraph SRC["SOURCE CHAINS (EVM + Solana)"]
         ETH[Ethereum<br/>USDC]
         BASE[Base<br/>USDC]
-        POLY[Polygon<br/>USDC / USDT]
+        POLY[Polygon<br/>USDC]
         ARB[Arbitrum<br/>USDC]
         SOL[Solana<br/>USDC]
     end
@@ -878,7 +854,7 @@ graph LR
 
     ETH --> AB
     BASE --> AB
-    POLY --> AB
+    POLY --> CCTP
     ARB --> CCTP
     SOL --> CCTP
 
@@ -887,42 +863,47 @@ graph LR
     USDC_S --> SW
     SW -->|Purchase| FT
 
-    FT -.->|BLOCKED| EVM
+    FT -.->|BLOCKED| SRC
 
     style STELLAR fill:#1a1a2e,color:#fff
     style BRIDGE fill:#0f3460,color:#fff
-    style EVM fill:#374151,color:#fff
+    style SRC fill:#374151,color:#fff
 ```
 
 **Direction:** USDC flows IN for investment, OUT for distributions/exit. Film tokens are **non-bridgeable** — they remain on Stellar under full compliance enforcement at all times.
 
-### 9.2 Supported Routes
+### 7.2 Supported Routes
 
 | Source Chain | Bridge | Token | Status |
 |-------------|--------|-------|--------|
-| Ethereum | Allbridge Core | USDC, USDT | Live |
+| Ethereum | Allbridge Core | USDC | Live |
 | Base | Allbridge Core | USDC | Live |
-| Polygon | Allbridge Core | USDC, USDT | Live |
-| Arbitrum | Allbridge Core | USDC | Live |
-| Solana | Allbridge Core | USDC | Live |
-| Any CCTP chain | Circle CCTP V2 | USDC (native) | Q1 2026 |
+| Polygon | Circle CCTP V2 | USDC (native) | Live |
+| Arbitrum | Circle CCTP V2 | USDC (native) | Live |
+| Solana | Circle CCTP V2 | USDC (native) | Live |
+| Any other CCTP chain | Circle CCTP V2 (live on Stellar since May 2026) | USDC (native) | Live |
 
-### 9.3 User Experience
+Only USDC is bridged (§6.2) — no USDT, no wrapped assets, no film tokens.
+
+### 7.3 User Experience
 
 The bridge is **embedded in the ACE FUND platform UI**. The investor does not interact with Allbridge or CCTP directly:
 
 1. Investor clicks "Deposit from EVM" in the ACE FUND dashboard
 2. MetaMask/Rabby popup asks to approve USDC transfer on source chain
 3. Platform routes the transfer through Allbridge Core or CCTP V2
-4. Trustline for USDC on Stellar is automatically established if needed
+4. USDC lands on the investor's Stellar smart wallet as a SAC contract
+   balance — no trustline setup needed (trustlines only apply to G... accounts;
+   if the bridge route requires a classic account as recipient, the platform
+   relays through a sponsored deposit account and forwards to the smart wallet)
 5. USDC arrives on the investor's Stellar wallet within 1-5 minutes
 6. Investor can immediately purchase film tokens
 
 ---
 
-## 10. Wallet Architecture
+## 8. Wallet Architecture
 
-### 10.1 Wallet Architecture Overview
+### 8.1 Wallet Architecture Overview
 
 ```mermaid
 graph TB
@@ -953,23 +934,23 @@ graph TB
     style ACE fill:#f3f4f6,color:#111
 ```
 
-### 10.2 Two Wallet Types
+### 8.2 Two Wallet Types
 
 | Type | User Profile | Technology | Signer | Custody |
 |------|-------------|------------|--------|---------|
 | **Passkey Wallet** | Traditional investor (club member) | Soroban smart wallet + WebAuthn (secp256r1) | Device biometrics (Touch ID / Face ID) | Self-custody |
 | **EVM Gateway Wallet** | Crypto-native investor | Soroban smart wallet + secp256k1 verification | EVM private key (MetaMask/Rabby) | Self-custody |
 
-### 10.3 Passkey Wallet Flow
+### 8.3 Passkey Wallet Flow
 
-Leverages Stellar's Protocol 21 secp256r1 verification for WebAuthn-compatible authentication:
+Leverages Stellar's native secp256r1 verification for WebAuthn-compatible authentication:
 
 - No seed phrase, no private key management for the user
 - Authentication via fingerprint, Face ID, or hardware security key
 - Gas fees sponsored by the platform (fee bumping)
 - Wallet creation is invisible — user signs up with email, wallet exists in background
 
-### 10.4 EVM Gateway Wallet Flow
+### 8.4 EVM Gateway Wallet Flow
 
 The `EVMWalletGateway` contract implements the `CustomAccountInterface`:
 
@@ -982,37 +963,35 @@ The `EVMWalletGateway` contract implements the `CustomAccountInterface`:
 
 **Post-grant evolution:** Guardian-based social recovery for passkey wallets (investor designates 2-3 guardians at onboarding; after a 7-day cooldown, a quorum can rotate the wallet's primary signer). Threshold signatures for issuer accounts to remove single-party orchestration dependency.
 
-### 10.5 Operational Signing Architecture
+### 8.5 Operational Signing Architecture
 
-The Authorization Sandwich pattern (§8.2) requires the issuer's signature on every approved transfer. For a portfolio of 200+ investors per film over a 30–40 year contract horizon, this implies an automated signing service. The signing architecture is designed to avoid a single point of failure while preserving the issuer's ultimate authority.
+The issuer account is controlled by a **single signer** (the film producer). The platform automation service operates under delegated authority via a signed service agreement but does not hold signing keys on the issuer account.
 
-**Recommended multisig configuration (2-of-3):**
+For sensitive operations (freeze, clawback, compliance configuration changes, contract upgrades), a **timelock mechanism** is implemented via a Soroban contract: the operation is submitted but only becomes executable after a configurable delay (e.g., 48 hours). During this window, the issuer can cancel the pending operation. This provides a safety net against unauthorized or erroneous actions without requiring a third-party co-signer.
 
-| Signer | Holder | Purpose |
-|--------|--------|---------|
-| **Key A** | Film producer (issuer) | Business authority — approves extraordinary operations (freeze, clawback, config changes) |
-| **Key B** | Platform automation service | Operational — signs Authorization Sandwiches for routine compliant transfers |
-| **Key C** | Independent trustee (e.g., reporting trustee or legal counsel) | Recovery + dispute resolution — co-signs if Key A or Key B is unavailable |
+| Operation Type | Signer | Timelock |
+|---|---|---|
+| Routine Authorization Sandwich (investor transfers) | Platform automation (delegated by issuer) | None — executed immediately after `check_transfer()` passes |
+| Investor registration / KYC whitelist | Platform automation (delegated by issuer) | None |
+| Freeze investor | Issuer | 48h timelock (cancellable) |
+| Clawback tokens | Issuer | 48h timelock (cancellable) |
+| Compliance rule changes | Issuer | 48h timelock (cancellable) |
+| Contract upgrade | Issuer | 48h timelock (cancellable) |
+| Signer rotation / account config | Issuer | 48h timelock (cancellable) |
 
-**Operational model:**
-- **Routine transfers:** Key B (platform automation) + Key A (producer auto-approval via delegated signing rule) sign the sandwich. Target latency: < 30 seconds from transfer request to settlement.
-- **Producer unavailable:** Key B + Key C can authorize transfers, ensuring liveness even if the producer is unreachable. The trustee co-signs under a pre-agreed service agreement.
-- **Platform offline:** Key A + Key C can authorize transfers directly, removing platform dependency.
-- **Extraordinary operations** (freeze, clawback, config change): require Key A (producer) explicitly — the platform automation key alone is never sufficient.
-
-**Regulatory framing:** The platform's automated signing (Key B) operates under the issuer's instructions per a signed service agreement. The issuer retains ultimate authority via Key A. This preserves the "SaaS technology provider" positioning — the platform executes the issuer's compliance policy, it does not make independent transfer decisions.
+**Post-grant evolution:** As the platform scales, a multisig configuration (e.g., 2-of-2 producer + platform, or 2-of-3 with an independent trustee) can be added to the issuer account without changing the smart contract architecture. Stellar's native multisig support makes this a configuration change, not a code change.
 
 ---
 
-## 11. Royalty Distribution Engine
+## 9. Royalty Distribution Engine
 
-### 11.1 Distribution Process
+### 9.1 Distribution Process
 
 Film royalties are distributed every 6 months for a duration of 30-40 years per film contract:
 
 ```mermaid
 sequenceDiagram
-    participant T as Reporting Trustee<br/>(Sales Agent / Auditor)
+    participant T as Reporting Trustee<br/>(Sales Agent / Chartered Accountant)
     participant RO as RevenueOracle<br/>(Soroban)
     participant P as Film Producer
     participant RD as RoyaltyDistributor<br/>(Soroban)
@@ -1043,21 +1022,11 @@ sequenceDiagram
     RD->>P: Unclaimed USDC returned
 ```
 
-### 11.2 Revenue Guarantee Mechanism
-
-ACE FUND structures each film tokenization with a **priority repayment waterfall**:
-
-1. **First revenues** are allocated to token holders until initial investment + 25% is repaid
-2. **Subsequent revenues** are split according to the contractual percentage (e.g., 10% to token holders)
-3. **Tax credit mechanism** (CNC France: 30%, Tax Shelter Belgium: 45%): 12 months post-production, tax credits are released to the producer, who allocates a portion to repay investors
-
-This waterfall is encoded in the legal contract (off-chain, signed via DocuSign). The on-chain component is the `RoyaltyDistributor` that executes the distributions as determined by the `RevenueOracle` data.
-
 ---
 
-## 12. Off-Chain Infrastructure
+## 10. Off-Chain Infrastructure
 
-### 12.1 Components
+### 10.1 Components
 
 | Component | Technology | Purpose |
 |-----------|------------|---------|
@@ -1070,35 +1039,7 @@ This waterfall is encoded in the legal contract (off-chain, signed via DocuSign)
 | **Hosting** | OVH Cloud (EU) | GDPR-compliant, EU data residency |
 | **IPFS** | Pinata / Infura | Legal contract storage, revenue report archives |
 
-### 12.2 Issuer Workflow (SaaS Dashboard)
-
-The platform provides a 4-step workflow for film producers to create and launch a tokenized offering:
-
-```mermaid
-graph LR
-    S1[Step 1<br/>Instrument<br/>Structuring] --> S2[Step 2<br/>Legal<br/>Documentation]
-    S2 --> S3[Step 3<br/>Payment<br/>Configuration]
-    S3 --> S4[Step 4<br/>Offering<br/>Launch]
-
-    S1a["• Pricing & valuation<br/>• Duration & maturity<br/>• Royalty rules<br/>• Investor rights<br/>• Token supply & partitions"]
-    S2a["• Investment agreements<br/>• Revenue sharing contracts<br/>• Offering documentation<br/>• e-Signature via<br/>  DocuSign / Yousign"]
-    S3a["• Crypto wallet (USDC)<br/>• PSP via BridgerPay<br/>  (Visa, PayPal, etc.)<br/>• Direct bank transfer<br/>  (issuer IBAN)"]
-    S4a["• Published on<br/>  investor marketplace<br/>• AssetForge deploys<br/>  Classic Asset + SAC<br/>• Tokens ready for sale"]
-
-    S1 --- S1a
-    S2 --- S2a
-    S3 --- S3a
-    S4 --- S4a
-
-    style S1 fill:#1a1a2e,color:#fff
-    style S2 fill:#1a1a2e,color:#fff
-    style S3 fill:#1a1a2e,color:#fff
-    style S4 fill:#10b981,color:#fff
-```
-
-**Key design choice:** Payment flows are configured so that funds transfer **directly from investor to issuer** (via BridgerPay, crypto wallet, or bank transfer). The platform never holds or intermediates funds. This is fundamental to the non-custodial architecture.
-
-### 12.3 Cap Table Management
+### 10.2 Cap Table Management
 
 The platform maintains a real-time cap table for each tokenized film asset, synchronized between on-chain and off-chain state:
 
@@ -1117,7 +1058,7 @@ The cap table engine reconciles on-chain balances with off-chain investor record
 - **Daily full-snapshot reconciliation:** Nightly job queries Horizon for all trustline balances per asset and compares against the off-chain cap table. Mismatches are flagged for manual review.
 - **Source of truth:** On-chain ledger is authoritative for token balances. Off-chain database is authoritative for PII (investor identity, KYC records). Reconciliation flags any divergence between expected (off-chain) and actual (on-chain) state.
 
-### 12.4 Data Separation
+### 10.3 Data Separation
 
 | Data | Storage | Reason |
 |------|---------|--------|
@@ -1133,43 +1074,53 @@ The cap table engine reconciles on-chain balances with off-chain investor record
 
 ---
 
-## 13. Security Model
+## 11. Security Model
 
-### 13.1 Key Management
+### 11.1 Key Management
 
 | Actor | Key Type | Storage | Risk Mitigation |
 |-------|----------|---------|-----------------|
-| Film producer (issuer) | Stellar keypair | Producer's custody | Multisig 2-of-3 (see §10.4) |
+| Film producer (issuer) | Stellar keypair | Producer's custody | Single-signer with timelock (see §8.5) |
 | Investor (passkey) | secp256r1 | Device secure enclave | WebAuthn standard |
 | Investor (EVM) | secp256k1 | MetaMask/Rabby | EVMWalletGateway contract |
 | Platform operations | Stellar keypair | HSM / KMS | Fee sponsoring only, no asset control |
 
-### 13.2 Attack Surface Analysis
+### 11.2 Threat Model (STRIDE)
+
+| Category | Threat example | Mitigation |
+|----------|----------------|------------|
+| **Spoofing** | Attacker impersonates an investor or the reporting trustee | `require_auth()` on every state-changing function; smart-wallet signatures verified on-chain (`__check_auth`, secp256r1/secp256k1); trustee registered on-chain via `add_authorized_trustee()` |
+| **Tampering** | Manipulated revenue figures or altered compliance rules | Revenue reports signed by the registered trustee with IPFS-anchored supporting docs; ComplianceRegistry config changes gated by the issuer with timelock (§8.5) |
+| **Repudiation** | Issuer or platform denies having authorized a transfer or distribution | Every authorization and transfer emits an on-chain event; SAC authorization state changes are ledger-recorded; tx hashes linked to investor records in the cap table engine (§10.2) |
+| **Information disclosure** | Investor PII exposure via on-chain data | On-chain data is pseudonymous (addresses + KYC hashes only); PII encrypted off-chain, EU residency (§6.3) |
+| **Denial of service** | Platform automation key unavailable, blocking Classic-rail transfers; storage entries archived | Timelock cancellation window (§8.5); smart-wallet rail operates without per-transfer issuer signature; TTL keeper service (§11.5) |
+| **Elevation of privilege** | Platform automation key attempts clawback, freeze, or config change | Address separation (§8.5): freeze/clawback and registry config are gated by the issuer with timelock; the automation key cannot perform these operations |
+
+Complementary surface analysis:
 
 | Threat | Mitigation |
 |--------|------------|
-| Unauthorized token transfer | AUTH_REQUIRED + ComplianceRegistry whitelist (two-layer) |
-| Platform compromise | Non-custodial: platform has no access to investor keys or funds |
-| Issuer key compromise | Optional multisig on issuer account; clawback enables recovery |
+| Unauthorized token transfer | AUTH_REQUIRED (trustlines and SAC balances) + ComplianceRegistry policy gateway (two-layer, both rails) |
+| Platform compromise | Non-custodial: platform has no access to investor keys or funds; protocol-level flags still block unauthorized transfers |
+| Issuer key compromise | Issuer key compromise is mitigated by the timelock on sensitive operations (48h cancellation window) and off-chain monitoring alerts |
 | Bridge exploit (USDC) | Only USDC is bridgeable; film tokens are non-bridgeable by design |
-| Revenue oracle manipulation | Reporting trustee model with contractual qualifications; dual-trustee for large distributions (> €1M) |
-| Smart contract vulnerability | Soroban Security Audit Bank (provided by SCF post-T3) |
+| Revenue oracle manipulation | Reporting trustee model with contractual qualifications |
 
-### 13.3 Authorization & Clawback Policy
+### 11.3 Authorization & Clawback Policy
 
 `AUTH_REVOCABLE` and `AUTH_CLAWBACK_ENABLED` serve different purposes and have different legal implications:
 
 | Action | Mechanism | Effect | When Used |
 |--------|-----------|--------|-----------|
-| **Freeze** | `setTrustlineFlags(AUTHORIZED_TO_MAINTAIN_LIABILITIES)` | Investor retains tokens but cannot send or receive | Regulatory investigation, AML flag, KYC expiry, temporary compliance hold |
-| **Clawback** | `clawback(investor, amount)` via SAC | Tokens forcibly returned to issuer | Court order, fraud, regulatory seizure, investor death/succession |
+| **Freeze** | `ComplianceRegistry.freeze()` — registry-level flag gated by the issuer with timelock (§8.5); `check_transfer()` fails on both rails. For `G...` accounts, `setTrustlineFlags(AUTHORIZED_TO_MAINTAIN_LIABILITIES)` is additionally submitted (the registry state is the authoritative record) | Investor retains tokens but cannot send or receive | Regulatory investigation, AML flag, KYC expiry, temporary compliance hold |
+| **Clawback** | Smart wallets (`C...`): `ComplianceRegistry.clawback()` → `SAC.clawback()` (the registry is the SAC admin after `set_admin`, §4.3), gated by the issuer with timelock. Classic accounts (`G...`): Classic `clawback` operation — issuer authorization with timelock (§8.5) | Tokens forcibly returned to issuer | Court order, fraud, regulatory seizure, investor death/succession |
 
 **Operational policy:**
 - **Freeze is the default response** to compliance issues — reversible, proportionate, preserves investor rights pending resolution.
 - **Clawback is a last resort** — irreversible, requires documented legal basis (court order, regulatory directive). Clawback events are logged on-chain and disclosed to all investors per the shareholder agreement.
-- Both operations require multisig authorization (Key A + Key B or Key A + Key C per §10.4). The platform automation key alone cannot freeze or clawback.
+- On the smart-wallet rail (`C...`), freeze and clawback are gated by the issuer with timelock (§8.5) — the platform automation key cannot perform these operations. On the classic rail (`G...`), Classic `clawback` requires the issuer's authorization with timelock; trustline de-authorization alone is an operational action whose authoritative counterpart is the registry freeze (§8.5).
 
-### 13.4 Upgrade Path
+### 11.4 Upgrade Path
 
 All Soroban contracts are upgradeable via the `upgrade()` function, gated by admin authorization:
 
@@ -1181,38 +1132,26 @@ pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
 }
 ```
 
-Upgrade authority is held by the contract admin (initially ACE FUND, transferable to a multisig or DAO). A system event `["executable_update", old, new]` is emitted on every upgrade for auditability.
+Upgrade authority is held by the contract admin — the issuer with timelock for the ComplianceRegistry (§8.5); initially ACE FUND for the other contracts, transferable to a multisig or DAO. A system event `["executable_update", old, new]` is emitted on every upgrade for auditability.
+
+### 11.5 Storage Lifecycle & TTL Management
+
+Soroban storage is rented: every persistent entry has a TTL and is archived when it expires. For contracts designed to operate over a 30–40 year distribution horizon, TTL management is an explicit operational responsibility, not an afterthought:
+
+- **Contract instances and critical registries** (ComplianceRegistry whitelist, AssetForge registry, open distributions) use persistent storage with proactive TTL extension: every state-changing call extends the instance TTL (`extend_ttl`), and a platform **keeper service** monitors remaining TTLs via RPC and submits `ExtendFootprintTTL` operations well before expiry.
+- **Closed distributions and claimed records** are allowed to expire after the claim window plus a retention margin — expired entries can always be restored (`RestoreFootprint`) from the ledger if a historical dispute requires it.
+- **Rent costs are budgeted** as a recurring platform operating expense and are negligible at Stellar's fee levels relative to the distribution amounts involved.
 
 ---
 
-## 14. DeFi Composability
-
-### 14.1 Future Integration Paths (Post-Grant)
-
-Film royalty tokens, once established on Stellar, can integrate with the existing DeFi ecosystem:
-
-| Protocol | Integration | Value |
-|----------|-------------|-------|
-| **Blend Protocol** | Film tokens as collateral for USDC borrowing | Investors can access liquidity without selling tokens |
-| **Soroswap / Aquarius** | USDC/Film-token trading pairs | Secondary market liquidity |
-| **DeFindex** | Vault strategy wrapping multiple film tokens | Diversified film investment product |
-
-**Note:** DeFi integrations require solving the KYC constraint — only whitelisted investors can hold film tokens. Possible approaches include permissioned pools (whitelist-gated) or synthetic tokens. This is out of scope for this grant but represents a natural evolution.
-
-### 14.2 Secondary Market
-
-Film tokens can be traded on compliant secondary market platforms. ACE FUND is in discussion with two regulated secondary market operators (one on Cardano, one on Base). On Stellar, peer-to-peer transfers between whitelisted investors are natively supported via the `ComplianceRegistry.check_transfer()` hook.
-
----
-
-## 15. ERC-1400 → Stellar Migration Strategy
+## 12. ERC-1400 → Stellar Migration Strategy
 
 ### Migration Overview
 
 ```mermaid
 graph LR
     subgraph CURRENT["CURRENT STATE (EVM)"]
-        TB[TaliumNet<br/>Private PoA Chain]
+        TB[Our Private EVM Chain<br/>Hyperledger Besu]
         ERC[ERC-1400<br/>Proxy Upgradeable]
         OPS[operatorTransferByPartition<br/>issueByPartition<br/>operatorRedeemByPartition]
     end
@@ -1241,61 +1180,19 @@ graph LR
 
 The milestone roadmap and budget are detailed in the SCF application document.
 
-### Legacy Holder Migration (TaliumNet)
+### Legacy Holder Migration
 
-Existing token holders on TaliumNet (MAD Films Coin — MDF, 25 transactions, €1.2M+ tokenized) have legal entitlements that must be preserved through the migration.
+Existing token holders on our private EVM chain (MAD Films Coin — MDF, 25 transactions, €1.2M+ tokenized) have legal entitlements that must be preserved through the migration.
 
 **Migration approach — Parallel operation, then forward-only:**
 
-- **Existing positions remain on TaliumNet.** Current token holders retain their ERC-1400 positions and continue receiving distributions via the existing infrastructure. No forced migration.
+- **Existing positions remain on the existing Hyperledger Besu chain.** Current token holders retain their ERC-1400 positions and continue receiving distributions via the existing infrastructure. No forced migration.
 - **New issuances go to Stellar.** All new film tokenizations (starting with the first grant-funded film) are issued on Stellar from day one.
 - **Optional migration path for existing holders:** Investors who wish to migrate receive new Stellar Classic Asset tokens in exchange for burned ERC-1400 tokens. The swap is 1:1, attested by the issuer, and requires investor consent (DocuSign).
 - **Legal continuity:** Confirmation from counsel that the migrated token represents the same legal instrument (same revenue rights, same contractual terms). This is documented per investor in the shareholder agreement.
-- **Communications plan:** Existing investors and producers are notified of the Stellar migration with a clear explanation of their options (stay on TaliumNet, migrate to Stellar, or hold both for future issuances).
+- **Communications plan:** Existing investors and producers are notified of the Stellar migration with a clear explanation of their options (stay on the existing Hyperledger Besu chain, migrate to Stellar, or hold both for future issuances).
 
 This parallel approach avoids disrupting existing investors while proving the Stellar infrastructure on new issuances.
-
----
-
-## Appendix A — Existing Traction
-
-### On-Chain Activity (TaliumNet / Hyperledger Besu)
-
-| Metric | Value |
-|--------|-------|
-| Contract | MAD Films Coin (MDF) — ERC-1400 proxy upgradeable |
-| Address | `0x0AA38721612b083eB8Ba17C9291449044C92A948` |
-| Standard | ERC-1400 (Security Token with partitions) |
-| Transactions | 25 confirmed (Jan 2025 — Apr 2026) |
-| Functions called | `operatorTransferByPartition` (16x), `issueByPartition` (4x), `operatorRedeemByPartition` (2x), `transferByPartition` (1x) |
-| Explorer | [TaliumNet Explorer](https://eth.talium.fr/address/0x0AA38721612b083eB8Ba17C9291449044C92A948) |
-
-### Tokenized Assets
-
-| Project | Type | Amount | Status |
-|---------|------|--------|--------|
-| TV Series Catalog (80 territories: Canal+, Arte, Al Jazeera, Radio-Canada) | Revenue rights | €500,000 (200 × €2,500) | Active, 25%+ annual yield |
-| High Pressure (French-Spanish production, €15M budget) | Revenue rights | €700,000 | Active, 1.5M tokenized tranche |
-| Independent Film (recurring director) | Revenue rights | €21,000+ | Active since Jan 2026 |
-| 2 additional films | Revenue rights | Various | Listed |
-| **Pipeline** | Various | **15+ films** | In preparation |
-
-### Recognition
-
-- **CES Las Vegas 2024** — Innovation Award for film tokenization model
-- **Academy of Motion Pictures** (Oscars) — Invited for tokenization partnership
-- **Cannes Film Festival** — Invited speaker
-- **CES Las Vegas 2026** — Invited speaker on film tokenization
-
-### Team
-
-| Name | Role | Background |
-|------|------|------------|
-| Grégory Monfort | CEO | 15+ years in audiovisual production. Founded ACE Good (2021) and ACE Fund. Network of 100+ film directors/producers worldwide. |
-| François de Chezelles | CTO | 25+ years IT, MSc MIT. Co-founder of Talium (blockchain ESN, 2012). 100+ tokenization operations. Built the ERC-1400 framework used by ACE Fund. |
-| Mehdi Terbeche | Investor Relations | Investment structuring background. Private equity experience. |
-| Alicya Mendes | COO | 15+ years in operations and business development. |
-| Jacques Soucquières | CFO | Former Crédit Foncier asset manager. Traditional finance background. |
 
 ---
 
@@ -1303,10 +1200,10 @@ This parallel approach avoids disrupting existing investors while proving the St
 
 | ERC-1400 Function | Stellar Equivalent |
 |--------------------|--------------------|
-| `issueByPartition(bytes32, address, uint256, bytes)` | `AssetForge.create_film_asset()` + `mint()` via SAC |
-| `operatorTransferByPartition(bytes32, address, address, uint256, bytes, bytes)` | Classic Asset `payment` op with Authorization Sandwich + `ComplianceRegistry.check_transfer()` |
+| `issueByPartition(bytes32, address, uint256, bytes)` | Classic Asset issuance (issuer `payment`, off-chain ops) + `AssetForge.register_film_asset()` |
+| `operatorTransferByPartition(bytes32, address, address, uint256, bytes, bytes)` | `ComplianceRegistry.execute_transfer()` (smart-wallet rail) or Authorization Sandwich (classic rail, after `check_transfer()` simulation) |
 | `operatorRedeemByPartition(bytes32, address, uint256, bytes, bytes)` | `clawback()` via SAC or `burn()` by holder |
-| `transferByPartition(bytes32, address, uint256, bytes)` | SEP-41 `transfer()` via SAC (gated by AUTH_REQUIRED + ComplianceRegistry) |
+| `transferByPartition(bytes32, address, uint256, bytes)` | `ComplianceRegistry.execute_transfer()` — atomic policy check + SAC `transfer()` (SEP-41) |
 | `balanceOfByPartition(bytes32, address)` | SEP-41 `balance()` on partition-specific SAC |
 | `partitionsOf(address)` | `AssetForge.get_film_assets()` per issuer |
 | `isOperator(address, address)` | Stellar account signers / multisig |
@@ -1319,7 +1216,7 @@ This parallel approach avoids disrupting existing investors while proving the St
 
 | SEP | Usage in ACE FUND |
 |-----|-------------------|
-| **SEP-10** | Web Authentication for investor login (challenge-response, JWT) |
+| **SEP-45** | Web Authentication for Contract Accounts — investor login with smart wallets (`C...` addresses, passkey / EVM gateway). *Draft status; SEP-10 covers only classic `G...` accounts and is used for those (issuer, treasury).* |
 | **SEP-41** | Token Interface for all film assets via SAC |
 | **SEP-57** | T-REX compliance framework: ComplianceRegistry hooks, investor whitelist, transfer restrictions. *Note: SEP-57 is currently a draft proposal. Architecture designed to be compatible with the final standard.* |
 | **SEP-6/24** | Fiat on/off-ramp via Stellar anchors for traditional investors |

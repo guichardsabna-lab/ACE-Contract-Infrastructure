@@ -12,10 +12,12 @@ set -euo pipefail
 # Optional:
 #   REQUIRE_AUTH=true|false          default: true
 #   REVOCABLE_AUTH=true|false        default: true
+#   CLAWBACK_ENABLED=true|false      default: false
 #   ISSUE_AMOUNT=<number>            default: 1000
 
 REQUIRE_AUTH="${REQUIRE_AUTH:-true}"
 REVOCABLE_AUTH="${REVOCABLE_AUTH:-true}"
+CLAWBACK_ENABLED="${CLAWBACK_ENABLED:-false}"
 ISSUE_AMOUNT="${ISSUE_AMOUNT:-1000}"
 
 require_env() {
@@ -36,14 +38,22 @@ if ! command -v stellar >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "==> Configuring issuer flags (AUTH_REQUIRED / AUTH_REVOCABLE)"
-if [[ "$REQUIRE_AUTH" == "true" || "$REVOCABLE_AUTH" == "true" ]]; then
+echo "==> Configuring issuer flags (AUTH_REQUIRED / AUTH_REVOCABLE / AUTH_CLAWBACK_ENABLED)"
+if [[ "$REQUIRE_AUTH" == "true" || "$REVOCABLE_AUTH" == "true" || "$CLAWBACK_ENABLED" == "true" ]]; then
   SET_OPTION_ARGS=()
   if [[ "$REQUIRE_AUTH" == "true" ]]; then
     SET_OPTION_ARGS+=("--set-required")
   fi
   if [[ "$REVOCABLE_AUTH" == "true" ]]; then
     SET_OPTION_ARGS+=("--set-revocable")
+  fi
+  if [[ "$CLAWBACK_ENABLED" == "true" ]]; then
+    # Clawback requires the issuer to be revocable as well.
+    if [[ "$REVOCABLE_AUTH" != "true" ]]; then
+      echo "CLAWBACK_ENABLED=true requires REVOCABLE_AUTH=true"
+      exit 1
+    fi
+    SET_OPTION_ARGS+=("--set-clawback-enabled")
   fi
 
   stellar tx new set-options \

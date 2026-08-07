@@ -1,5 +1,5 @@
 [package]
-name = "kyc_asset"
+name = "compliance_registry"
 version = "0.1.0"
 edition = "2021"
 publish = false

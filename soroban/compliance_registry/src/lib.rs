@@ -3,7 +3,7 @@
 use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol, Vec};
 
 #[contract]
-pub struct KycAssetController;
+pub struct ComplianceRegistry;
 
 #[contracttype]
 #[derive(Clone)]
@@ -13,7 +13,7 @@ enum DataKey {
 }
 
 #[contractimpl]
-impl KycAssetController {
+impl ComplianceRegistry {
     // Initialize once with admin and the target SAC address.
     pub fn init(env: Env, admin: Address, sac: Address) {
         admin.require_auth();
@@ -45,8 +45,8 @@ impl KycAssetController {
         env.storage().instance().set(&DataKey::Sac, &sac);
     }
 
-    // Placeholder hook for future KYC gate logic.
-    pub fn is_kyc_allowed(_env: Env, _user: Address) -> bool {
+    // Placeholder hook for future compliance gate logic.
+    pub fn is_compliance_allowed(_env: Env, _user: Address) -> bool {
         true
     }
 
@@ -74,9 +74,9 @@ impl KycAssetController {
         Vec::from_array(
             &env,
             [
-                Symbol::new(&env, "kyc"),
-                Symbol::new(&env, "asset"),
-                Symbol::new(&env, "v2"),
+                Symbol::new(&env, "compliance"),
+                Symbol::new(&env, "registry"),
+                Symbol::new(&env, "v1"),
             ],
         )
     }
