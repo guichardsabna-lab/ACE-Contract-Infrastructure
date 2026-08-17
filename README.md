@@ -29,6 +29,8 @@ In short: **Compliance Registry exists as the initial starter**, while **AssetFo
 
 ```text
 .
+├── .env.example                     # Safe template for local configuration
+├── ARCHITECTURE_v4.md               # Planned ACE FUND system architecture
 ├── Makefile                         # Common workflows for scripts and Soroban commands
 ├── scripts/
 │   ├── create_classic_asset.sh       # Configure issuer flags, trustline, auth, and issuance
@@ -117,7 +119,17 @@ make contract-invoke
 
 After deployment, store the new contract ID as `COMPLIANCE_CONTRACT_ID` in `.env`.
 
-### 5. Onboard a new user
+### 5. Transfer through the controller
+
+Set `TRANSFER_FROM`, `TRANSFER_TO`, and `TRANSFER_AMOUNT`, then run:
+
+```bash
+make contract-transfer
+```
+
+The source address must authorize the forwarded SAC transfer.
+
+### 6. Onboard a new user
 
 ```bash
 make onboard-user
@@ -145,6 +157,10 @@ This creates the user's trustline, optionally authorizes it, and optionally send
 | `CLAWBACK_ENABLED` | Allow issuer clawback on new trustlines when compliance requires it | `false` |
 | `SAC_ID` | Stellar Asset Contract ID | placeholder |
 | `COMPLIANCE_CONTRACT_ID` | Deployed Compliance Registry contract ID | placeholder |
+| `ADMIN_ACCOUNT` | Admin address used during contract initialization | placeholder |
+| `TRANSFER_FROM` | Source address for a contract transfer | `alice` |
+| `TRANSFER_TO` | Destination address for a contract transfer | `alice2` |
+| `TRANSFER_AMOUNT` | Amount forwarded through the SAC token interface | `100` |
 
 ## Contract notes
 

@@ -1,4 +1,5 @@
 SHELL := /usr/bin/env bash
+.DEFAULT_GOAL := help
 
 NETWORK ?= testnet
 ASSET_CODE ?= ACEUSD
@@ -25,12 +26,15 @@ TRANSFER_AMOUNT ?= 100
 
 help:
 	@echo "Targets:"
-	@echo "  make print-env      # show current environment values used by scripts"
-	@echo "  make classic-asset  # create/configure classic asset + trustline/auth flow"
-	@echo "  make onboard-user   # new user trustline + optional auth + optional send"
-	@echo "  make register-sac   # register/get SAC for ASSET_CODE:ISSUER_ACCOUNT"
-	@echo "  make soroban-build  # build soroban contract in soroban/compliance_registry"
-	@echo "  make soroban-test   # run soroban contract tests"
+	@echo "  make print-env          # show current environment values used by scripts"
+	@echo "  make classic-asset      # create/configure classic asset + trustline/auth flow"
+	@echo "  make onboard-user       # new user trustline + optional auth + optional send"
+	@echo "  make register-sac       # register/get SAC for ASSET_CODE:ISSUER_ACCOUNT"
+	@echo "  make soroban-build      # build the Compliance Registry contract"
+	@echo "  make soroban-test       # run the Compliance Registry contract tests"
+	@echo "  make contract-deploy    # deploy the built Compliance Registry contract"
+	@echo "  make contract-invoke    # initialize the deployed contract"
+	@echo "  make contract-transfer  # transfer tokens through the contract"
 
 print-env:
 	@echo "NETWORK=$(NETWORK)"
@@ -95,25 +99,25 @@ soroban-test:
 
 contract-deploy:
 	stellar contract deploy \
-  		--wasm soroban/compliance_registry/target/wasm32v1-none/release/compliance_registry.wasm \
-  		--source-account $(SOURCE_SECRET) \
-  		--network $(NETWORK)
+		--wasm soroban/compliance_registry/target/wasm32v1-none/release/compliance_registry.wasm \
+		--source-account "$(SOURCE_SECRET)" \
+		--network "$(NETWORK)"
 
 contract-invoke:
 	stellar contract invoke \
-  		--id $(COMPLIANCE_CONTRACT_ID) \
-  		--source-account $(SOURCE_SECRET) \
-  		--network $(NETWORK) \
-  		-- init \
-  		--admin $(ADMIN_ACCOUNT) \
-  		--sac $(SAC_ID)
+		--id "$(COMPLIANCE_CONTRACT_ID)" \
+		--source-account "$(SOURCE_SECRET)" \
+		--network "$(NETWORK)" \
+		-- init \
+		--admin "$(ADMIN_ACCOUNT)" \
+		--sac "$(SAC_ID)"
 
 contract-transfer:
 	stellar contract invoke \
-  		--id $(COMPLIANCE_CONTRACT_ID) \
-  		--source-account $(SOURCE_SECRET) \
-  		--network $(NETWORK) \
-  		-- transfer \
-  		--from $(TRANSFER_FROM) \
-  		--to $(TRANSFER_TO) \
-  		--amount $(TRANSFER_AMOUNT)
+		--id "$(COMPLIANCE_CONTRACT_ID)" \
+		--source-account "$(SOURCE_SECRET)" \
+		--network "$(NETWORK)" \
+		-- transfer \
+		--from "$(TRANSFER_FROM)" \
+		--to "$(TRANSFER_TO)" \
+		--amount "$(TRANSFER_AMOUNT)"
