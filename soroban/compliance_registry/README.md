@@ -2,6 +2,10 @@
 
 Soroban contract that wraps common operations around a Stellar Asset Contract (SAC). It is designed as a starting point for adding compliance checks to an ACE classic asset.
 
+## Target role
+
+In the ACE FUND architecture (`ARCHITECTURE_v4.md`, section 4.3), the Compliance Registry is the admin of each film's SAC. It holds the KYC whitelist and the transfer rules, acts as the transfer gateway, and carries the freeze and clawback actions. The code in this directory is the starting point for that contract.
+
 ## Current behavior
 
 - `init(admin, sac)` initializes the controller once and stores the admin and SAC addresses.

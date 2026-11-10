@@ -2,6 +2,8 @@
 
 use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol, Vec};
 
+// Compliance Registry: starter for the contract described in ARCHITECTURE_v4.md, section 4.3.
+// Target role: KYC whitelist, transfer rules and transfer gateway (SAC admin), freeze and clawback.
 #[contract]
 pub struct ComplianceRegistry;
 
@@ -45,7 +47,7 @@ impl ComplianceRegistry {
         env.storage().instance().set(&DataKey::Sac, &sac);
     }
 
-    // Placeholder hook for future compliance gate logic.
+    // Placeholder hook for the KYC whitelist and transfer rules (not enforced yet).
     pub fn is_compliance_allowed(_env: Env, _user: Address) -> bool {
         true
     }
