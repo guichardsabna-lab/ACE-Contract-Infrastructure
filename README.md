@@ -11,17 +11,30 @@ The repository currently contains two parts:
 
 The current repository includes the first Soroban starter contract:
 
-- **Compliance Registry** — currently implemented as a minimal controller around a SAC address, with placeholder compliance logic.
+- **Compliance Registry** — currently implemented as a minimal controller around a SAC address, with placeholder compliance logic. Its target role is the KYC whitelist, the transfer rules and the transfer gateway (SAC admin), with freeze and clawback.
 
-The full ACE FUND architecture also calls for the following contracts to be added:
+The full ACE FUND architecture (see `ARCHITECTURE_v4.md`) also calls for the following contracts to be added:
 
 - **AssetForge** — registers each film asset/partition after the Classic Asset and SAC wrapper are created off-chain. It should store the issuer, asset code, SAC address, total supply, partition type, and legal metadata hash.
 - **RoyaltyDistributor** — manages claim-based USDC royalty distributions for film token holders. It should create distribution periods, calculate claimable USDC, process investor claims, settle open distributions on transfer, and reclaim expired unclaimed funds.
 - **RevenueOracle** — records signed film revenue reports from an authorized trustee. It should store period revenue, net distributable amounts, report hashes, timestamps, and cumulative revenue data.
 - **EVMWalletGateway** — lets EVM wallet users interact with Stellar contracts through a Soroban smart wallet using secp256k1 signatures from MetaMask/Rabby-style wallets.
-- **Passkey Wallet** — provides a WebAuthn/passkey smart wallet flow for investors using biometric or device-native signing.
 
-In short: **Compliance Registry exists as the initial starter**, while **AssetForge, RoyaltyDistributor, RevenueOracle, EVMWalletGateway, and Passkey Wallet still need to be added**.
+Traditional investors do not get a custom wallet contract: their account is an instance of the OpenZeppelin `stellar-accounts` smart wallet whose sole signer is the investor's Privy embedded key.
+
+In short: **Compliance Registry exists as the initial starter**, while **AssetForge, RoyaltyDistributor, RevenueOracle, and EVMWalletGateway still need to be added**.
+
+## Ecosystem building blocks
+
+The platform relies on existing building blocks of the Stellar ecosystem rather than rebuilding them:
+
+| Building block | Role in ACE FUND |
+| --- | --- |
+| Privy | Embedded wallet for traditional investors (email, social or passkey login), signer of the investor smart wallet |
+| Stellar Wallets Kit | Connection for investors who already have a Stellar wallet (Freighter, LOBSTR, xBull, Albedo...) |
+| Circle CCTP V2 | Native USDC in and out between EVM chains, Solana and Stellar |
+| Near Intents | Deposit from any chain or asset, delivered as USDC on Stellar |
+| Soroswap | USDC ↔ EURC conversion of royalties for investors in euros |
 
 > Keep secret keys out of Git. Copy `.env.example` to `.env`, fill in local values, and source it before running deployment or onboarding commands.
 
@@ -30,7 +43,7 @@ In short: **Compliance Registry exists as the initial starter**, while **AssetFo
 ```text
 .
 ├── .env.example                     # Safe template for local configuration
-├── ARCHITECTURE_v4.md               # Planned ACE FUND system architecture
+├── ARCHITECTURE_v4.md               # ACE FUND technical architecture
 ├── Makefile                         # Common workflows for scripts and Soroban commands
 ├── scripts/
 │   ├── create_classic_asset.sh       # Configure issuer flags, trustline, auth, and issuance
