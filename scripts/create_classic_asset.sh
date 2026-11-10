@@ -12,12 +12,12 @@ set -euo pipefail
 # Optional:
 #   REQUIRE_AUTH=true|false          default: true
 #   REVOCABLE_AUTH=true|false        default: true
-#   CLAWBACK_ENABLED=true|false      default: false
+#   CLAWBACK_ENABLED=true|false      default: true
 #   ISSUE_AMOUNT=<number>            default: 1000
 
 REQUIRE_AUTH="${REQUIRE_AUTH:-true}"
 REVOCABLE_AUTH="${REVOCABLE_AUTH:-true}"
-CLAWBACK_ENABLED="${CLAWBACK_ENABLED:-false}"
+CLAWBACK_ENABLED="${CLAWBACK_ENABLED:-true}"
 ISSUE_AMOUNT="${ISSUE_AMOUNT:-1000}"
 
 require_env() {

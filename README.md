@@ -167,7 +167,7 @@ This creates the user's trustline, optionally authorizes it, and optionally send
 | `SEND_AMOUNT` | Optional user onboarding transfer | `100` |
 | `REQUIRE_AUTH` | Require issuer approval for trustlines | `true` |
 | `REVOCABLE_AUTH` | Allow issuer to revoke authorization | `true` |
-| `CLAWBACK_ENABLED` | Allow issuer clawback on new trustlines when compliance requires it | `false` |
+| `CLAWBACK_ENABLED` | Allow issuer clawback on new trustlines, as required for the film assets | `true` |
 | `SAC_ID` | Stellar Asset Contract ID | placeholder |
 | `COMPLIANCE_CONTRACT_ID` | Deployed Compliance Registry contract ID | placeholder |
 | `ADMIN_ACCOUNT` | Admin address used during contract initialization | placeholder |
@@ -192,6 +192,6 @@ Before using this with real assets:
 - Replace placeholder compliance logic with policy-backed allowlist/denylist checks.
 - Add contract tests for initialization, admin-only updates, transfers, and rejected users.
 - Confirm issuer flags match the compliance requirements for the asset.
-- Enable `CLAWBACK_ENABLED` only when the asset policy requires issuer clawback powers.
+- Keep `CLAWBACK_ENABLED=true` for film assets; the flag only applies to trustlines created after it is set.
 - Rotate any secret that was ever committed or shared outside a secure secret manager.
 - Use separate accounts for development, staging, and production.
